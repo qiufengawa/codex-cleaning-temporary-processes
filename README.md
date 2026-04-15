@@ -2,20 +2,41 @@
 
 [简体中文](./README.zh-CN.md)
 
-Safety-first Codex skill for Windows process hygiene. It helps Codex inspect and clean temporary development processes after tool-driven work without touching the active Codex shell, ordinary user applications, or ambiguous long-lived services.
+Cross-platform Codex skill for safe process hygiene on Windows, macOS, and Linux. It helps Codex inspect and clean temporary development processes after tool-driven work without touching the active Codex shell, ordinary user applications, or ambiguous long-lived services.
 
 ## Overview
 
-Windows development sessions often leave behind extra shells, test runners, build helpers, browser-debug processes, and workspace runtimes. This skill gives Codex a structured way to identify those leftovers and clean only the ones that are clearly finished.
+Long development sessions often leave behind shells, test runners, build helpers, browser-debug processes, and workspace runtimes that have already finished their job. This skill gives Codex a repeatable way to classify those leftovers and reclaim only the ones that are clearly temporary and no longer useful.
 
-It is especially useful during long multi-step tasks where one-shot commands keep accumulating even though the next step no longer needs them.
+This is a public, general-purpose skill. It is not tied to one project, one stack, or one operating system.
 
-## What It Solves
+## Supported Environments
 
-- lingering temporary shells after `npm`, `pnpm`, `yarn`, `bun`, `vite`, `vitest`, `cargo`, `tauri`, and similar commands
-- extra DevTools MCP, remote-debug, or browser automation helpers after a tool step finishes
-- process buildup during long tasks where cleanup should happen between steps, not only at the very end
-- accidental over-cleaning caused by treating every runtime or shell as disposable
+- Windows
+- macOS
+- Linux
+
+The implementation uses a shared PowerShell entrypoint plus a shell wrapper for macOS and Linux.
+
+## Runtime Requirements
+
+- Windows: PowerShell is available by default
+- macOS or Linux: install PowerShell 7 so `pwsh` is available
+- If your checkout does not preserve executable bits, run the Unix wrapper through `bash`
+
+## Ecosystem Coverage
+
+The bundled rules are designed around mainstream developer workflows across multiple ecosystems, including:
+
+- JavaScript and TypeScript tools such as `npm`, `pnpm`, `yarn`, `bun`, `vite`, `vitest`, `next`, `nuxt`, `astro`, `webpack`, and `storybook`
+- Node backend and service tools such as `tsx`, `ts-node`, `ts-node-dev`, `nodemon`, `nest`, `remix`, and `svelte-kit`
+- Rust tools such as `cargo`, `cargo test`, and `cargo tauri dev`
+- Python tools such as `pytest`, `uvicorn`, `gunicorn`, `flask`, and Django `runserver`
+- JVM and .NET tools such as `java`, `gradle`, `mvn`, and `dotnet`
+- Go, Ruby, PHP, Elixir, Swift, Dart, Flutter, and common native build tools when command and workspace evidence are strong
+- DevTools MCP, Playwright-style automation, and remote-debug browser sessions
+
+The examples are representative, not exhaustive. The skill relies on command-line evidence, process-tree relationships, and workspace matching instead of hard-coding one project layout.
 
 ## How It Works
 
@@ -27,10 +48,19 @@ The skill uses a three-mode workflow:
 
 Under the hood, the implementation stays split into two decisions:
 
-- process classification determines what kind of process Codex is looking at
-- cleanup policy determines whether that process should be preserved, inspected only, or cleaned now
+- process classification decides what kind of process Codex is looking at
+- cleanup policy decides whether the current mode should preserve, inspect only, or clean it now
 
-## Safety Boundaries
+## Recommended Strategy
+
+Use the skill in short cycles instead of waiting for the very end of a long task:
+
+1. Run `inspect` before cleanup or when process ownership is still unclear
+2. Run `checkpoint-cleanup` after a risky step such as tests, builds, one-shot scripts, browser automation, or DevTools MCP
+3. Re-run `inspect` to verify only the intended leftovers were reclaimed
+4. Use `cleanup` only when the remaining temporary process trees are definitely no longer needed
+
+## Safety Model
 
 This skill is intentionally conservative.
 
@@ -40,31 +70,30 @@ This skill is intentionally conservative.
 - It keeps likely reusable dev servers in `inspect-only` during checkpoint cleanup
 - It only cleans high-confidence temporary process trees that no longer provide value to the current step
 
-Checkpoint cleanup is mainly for things like:
+Checkpoint cleanup is mainly for:
 
 - DevTools MCP services, launchers, and watchdogs
 - explicit browser automation or remote-debug sessions
 - one-shot shells and runtimes tied to a finished step
 - wrapper shells that clearly launched automation helpers such as `chrome-devtools-mcp`, `playwright`, or `--remote-debugging-port`
 
-## Coverage
+## What It Will Not Do
 
-The bundled rules already recognize representative patterns across multiple ecosystems, including:
-
-- JavaScript and TypeScript workflows such as `npm`, `pnpm`, `yarn`, `bun`, `vite`, `vitest`, and common framework dev commands
-- Rust and Tauri workflows such as `cargo` and `cargo tauri dev`
-- Python commands such as `pytest`, `uvicorn`, `flask`, and Django `runserver`
-- .NET, Go, Ruby, PHP, and Java dev or test workflows when workspace evidence is strong
-- DevTools MCP, Playwright-style automation, and remote-debug browser sessions
+- It will not kill the active Codex shell or Codex helper shells
+- It will not kill normal user browsers without automation flags
+- It will not kill unmatched runtimes just because they are `node`, `python`, `java`, or similar
+- It will not force cleanup when evidence is weak; those processes stay in `inspect-only`
 
 ## Repository Layout
 
 - `SKILL.md`: public skill instructions and operating rules
 - `agents/openai.yaml`: default agent metadata and invocation prompt
+- `scripts/process-inventory.ps1`: cross-platform process inventory collection
 - `scripts/process-classification.ps1`: process classification rules
 - `scripts/cleanup-policy.ps1`: cleanup decision policy
-- `scripts/cleanup-temporary-processes.ps1`: inspect and cleanup entry point
-- `scripts/*.Tests.ps1`: Pester coverage for classification and policy behavior
+- `scripts/cleanup-temporary-processes.ps1`: shared inspect and cleanup entry point
+- `scripts/cleanup-temporary-processes.sh`: macOS and Linux shell wrapper
+- `scripts/*.Tests.ps1`: Pester coverage for inventory, classification, and policy behavior
 - `docs/project-introduction.md`: English project introduction
 - `docs/project-introduction.zh-CN.md`: Chinese project introduction
 
@@ -76,29 +105,32 @@ The bundled rules already recognize representative patterns across multiple ecos
 
 ## Usage
 
-Inspect first:
+Windows:
 
 ```powershell
 powershell -ExecutionPolicy Bypass -File "$env:USERPROFILE\.codex\skills\codex-cleaning-temporary-processes\scripts\cleanup-temporary-processes.ps1" -Mode inspect -Workspace "C:\Projects\ExampleApp"
 ```
 
-Run checkpoint cleanup after a risky step finishes:
+macOS or Linux with PowerShell:
 
-```powershell
-powershell -ExecutionPolicy Bypass -File "$env:USERPROFILE\.codex\skills\codex-cleaning-temporary-processes\scripts\cleanup-temporary-processes.ps1" -Mode checkpoint-cleanup -Workspace "C:\Projects\ExampleApp"
+```bash
+pwsh -NoProfile -File "$HOME/.codex/skills/codex-cleaning-temporary-processes/scripts/cleanup-temporary-processes.ps1" -Mode inspect -Workspace "/Users/example/project"
 ```
 
-Run a final sweep only when the task is ending or the remaining temporary process trees are definitely no longer needed:
+macOS or Linux with the shell wrapper:
 
-```powershell
-powershell -ExecutionPolicy Bypass -File "$env:USERPROFILE\.codex\skills\codex-cleaning-temporary-processes\scripts\cleanup-temporary-processes.ps1" -Mode cleanup -Workspace "C:\Projects\ExampleApp"
+```bash
+bash "$HOME/.codex/skills/codex-cleaning-temporary-processes/scripts/cleanup-temporary-processes.sh" -Mode inspect -Workspace "/Users/example/project"
 ```
+
+Switch `inspect` to `checkpoint-cleanup` after a risky step finishes. Use `cleanup` only when the remaining temporary process trees are definitely no longer needed.
 
 ## Testing
 
 Run the shipped Pester suites:
 
 ```powershell
+Invoke-Pester -Path .\scripts\process-inventory.Tests.ps1 -PassThru
 Invoke-Pester -Path .\scripts\process-classification.Tests.ps1 -PassThru
 Invoke-Pester -Path .\scripts\cleanup-policy.Tests.ps1 -PassThru
 ```

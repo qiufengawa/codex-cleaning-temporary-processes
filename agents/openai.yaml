@@ -1,6 +1,6 @@
 interface:
   display_name: "Codex Temporary Process Cleanup"
-  short_description: "Safety-first inspection and cleanup for temporary Windows dev processes"
-  default_prompt: "Use $codex-cleaning-temporary-processes to inspect temporary Windows dev processes after tool-driven work, run checkpoint cleanup after each high-risk step, and clean only high-confidence leftovers while preserving reusable dev servers, the active Codex shell, normal user apps, and anything without strong task-specific evidence."
+  short_description: "Safety-first cross-platform inspection and cleanup for temporary dev processes"
+  default_prompt: "Use $codex-cleaning-temporary-processes after tool-driven work on Windows, macOS, or Linux to inspect temporary dev processes, run checkpoint cleanup after each high-risk step, and clean only high-confidence leftovers while preserving reusable dev servers, the active Codex shell, normal user apps, and anything without strong task-specific evidence."
 policy:
   allow_implicit_invocation: true

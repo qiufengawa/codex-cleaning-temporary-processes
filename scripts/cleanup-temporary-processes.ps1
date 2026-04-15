@@ -11,8 +11,9 @@ $ErrorActionPreference = "Stop"
 
 . (Join-Path $PSScriptRoot "process-classification.ps1")
 . (Join-Path $PSScriptRoot "cleanup-policy.ps1")
+. (Join-Path $PSScriptRoot "process-inventory.ps1")
 
-$processes = @(Get-CimInstance Win32_Process)
+$processes = @(Get-TemporaryProcessInventory)
 $childrenByParent = @{}
 
 foreach ($process in $processes) {

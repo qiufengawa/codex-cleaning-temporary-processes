@@ -35,6 +35,23 @@ Describe 'Get-TemporaryProcessClassifications' {
     $result.Count | Should Be 0
   }
 
+  It 'does not classify an interactive bash shell without task markers' {
+    . $libraryPath
+
+    $processes = @(
+      [pscustomobject]@{
+        ProcessId = 97
+        ParentProcessId = 1
+        Name = 'bash'
+        CommandLine = '/bin/bash'
+      }
+    )
+
+    $result = @(Get-TemporaryProcessClassifications -Processes $processes)
+
+    $result.Count | Should Be 0
+  }
+
   It 'classifies DevTools MCP node processes without needing a workspace match' {
     . $libraryPath
 
@@ -187,6 +204,25 @@ Describe 'Get-TemporaryProcessClassifications' {
     $result[0].Killable | Should Be $true
   }
 
+  It 'classifies workspace-scoped python3 uvicorn processes as temporary dev tools' {
+    . $libraryPath
+
+    $processes = @(
+      [pscustomobject]@{
+        ProcessId = 111
+        ParentProcessId = 1
+        Name = 'python3'
+        CommandLine = 'python3 -m uvicorn app.main:app --reload --app-dir /repo'
+      }
+    )
+
+    $result = @(Get-TemporaryProcessClassifications -Processes $processes -Workspace '/repo')
+
+    $result.Count | Should Be 1
+    $result[0].Category | Should Be 'dev-tool'
+    $result[0].Killable | Should Be $true
+  }
+
   It 'classifies workspace-scoped dotnet watch processes as temporary dev tools' {
     . $libraryPath
 
@@ -200,6 +236,120 @@ Describe 'Get-TemporaryProcessClassifications' {
     )
 
     $result = @(Get-TemporaryProcessClassifications -Processes $processes -Workspace 'C:\Repo')
+
+    $result.Count | Should Be 1
+    $result[0].Category | Should Be 'dev-tool'
+    $result[0].Killable | Should Be $true
+  }
+
+  It 'classifies workspace-scoped java dev processes as temporary dev tools' {
+    . $libraryPath
+
+    $processes = @(
+      [pscustomobject]@{
+        ProcessId = 112
+        ParentProcessId = 1
+        Name = 'java'
+        CommandLine = 'java -jar /repo/build/libs/app.jar --spring.profiles.active=dev'
+      }
+    )
+
+    $result = @(Get-TemporaryProcessClassifications -Processes $processes -Workspace '/repo')
+
+    $result.Count | Should Be 1
+    $result[0].Category | Should Be 'dev-tool'
+    $result[0].Killable | Should Be $true
+  }
+
+  It 'classifies workspace-scoped bash pytest shells as temporary tool shells' {
+    . $libraryPath
+
+    $processes = @(
+      [pscustomobject]@{
+        ProcessId = 113
+        ParentProcessId = 1
+        Name = 'bash'
+        CommandLine = '/bin/bash -lc "pytest tests/api --rootdir /repo"'
+      }
+    )
+
+    $result = @(Get-TemporaryProcessClassifications -Processes $processes -Workspace '/repo')
+
+    $result.Count | Should Be 1
+    $result[0].Category | Should Be 'tool-shell'
+    $result[0].Killable | Should Be $true
+  }
+
+  It 'classifies workspace-scoped bash tsx watch shells as temporary tool shells' {
+    . $libraryPath
+
+    $processes = @(
+      [pscustomobject]@{
+        ProcessId = 115
+        ParentProcessId = 1
+        Name = 'bash'
+        CommandLine = '/bin/bash -lc "tsx watch src/server.ts --cwd /repo"'
+      }
+    )
+
+    $result = @(Get-TemporaryProcessClassifications -Processes $processes -Workspace '/repo')
+
+    $result.Count | Should Be 1
+    $result[0].Category | Should Be 'tool-shell'
+    $result[0].Killable | Should Be $true
+  }
+
+  It 'classifies workspace-scoped php artisan serve processes as temporary dev tools' {
+    . $libraryPath
+
+    $processes = @(
+      [pscustomobject]@{
+        ProcessId = 114
+        ParentProcessId = 1
+        Name = 'php'
+        CommandLine = 'php /repo/artisan serve --host=127.0.0.1'
+      }
+    )
+
+    $result = @(Get-TemporaryProcessClassifications -Processes $processes -Workspace '/repo')
+
+    $result.Count | Should Be 1
+    $result[0].Category | Should Be 'dev-tool'
+    $result[0].Killable | Should Be $true
+  }
+
+  It 'classifies workspace-scoped tsx node processes as temporary dev tools' {
+    . $libraryPath
+
+    $processes = @(
+      [pscustomobject]@{
+        ProcessId = 116
+        ParentProcessId = 1
+        Name = 'node'
+        CommandLine = 'node /repo/node_modules/tsx/dist/cli.mjs watch src/server.ts'
+      }
+    )
+
+    $result = @(Get-TemporaryProcessClassifications -Processes $processes -Workspace '/repo')
+
+    $result.Count | Should Be 1
+    $result[0].Category | Should Be 'dev-tool'
+    $result[0].Killable | Should Be $true
+  }
+
+  It 'classifies workspace-scoped nodemon node processes as temporary dev tools' {
+    . $libraryPath
+
+    $processes = @(
+      [pscustomobject]@{
+        ProcessId = 117
+        ParentProcessId = 1
+        Name = 'node'
+        CommandLine = 'node /repo/node_modules/nodemon/bin/nodemon.js src/server.ts --watch src'
+      }
+    )
+
+    $result = @(Get-TemporaryProcessClassifications -Processes $processes -Workspace '/repo')
 
     $result.Count | Should Be 1
     $result[0].Category | Should Be 'dev-tool'

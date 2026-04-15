@@ -1,62 +1,68 @@
 Set-StrictMode -Version Latest
 
-$script:ProtectedShellNames = @("powershell.exe", "pwsh.exe")
-$script:BrowserNames = @("chrome.exe", "msedge.exe", "chromium.exe")
-$script:GenericRuntimeNames = @(
-  "python.exe",
-  "py.exe",
-  "uv.exe",
-  "dotnet.exe",
-  "go.exe",
-  "ruby.exe",
-  "php.exe",
-  "java.exe",
-  "bun.exe",
-  "deno.exe"
+$script:ProtectedShellNamePatterns = @(
+  "^(powershell|pwsh)(\.exe)?$",
+  "^(bash|zsh|sh|fish)$"
+)
+$script:CmdShellNamePatterns = @("^cmd(\.exe)?$")
+$script:BrowserNamePatterns = @(
+  "^(chrome|msedge|chromium)(\.exe)?$",
+  "^(google-chrome|microsoft-edge)$"
+)
+$script:NodeNamePatterns = @("^node(\.exe)?$")
+$script:GenericRuntimeNamePatterns = @(
+  "^(python(\d+(\.\d+)*)?|py)(\.exe)?$",
+  "^(uv|uvx|poetry|pipenv)(\.exe)?$",
+  "^(dotnet|go|ruby|php|java|bun|deno|julia|swift|dart|flutter)(\.exe)?$"
 )
 
 $script:BrowserAutomationPattern = "playwright|remote-debugging-port|--headless"
 $script:BrowserDebugPattern = "--remote-debugging-port|--headless|playwright|devtools"
+$script:CodexParentNamePattern = "^Codex(\.exe)?$"
 
 $script:HighConfidenceShellPatterns = @(
-  "\b(vite|vitest|playwright|cargo|tauri)\b",
+  "\b(vite|vitest|playwright|cargo|tauri|pytest|phpunit|rspec)\b",
   "chrome-devtools-mcp",
   "remote-debugging-port"
 )
 
 $script:WorkspaceScopedShellPatterns = @(
   "\b(npm|npx|pnpm|pnpx|yarn|bun|bunx)(\.cmd|\.exe)?\b.*\b(run|exec|dev|build|preview|test|start|serve|watch)\b",
-  "\b(next|nuxt|astro|webpack|rollup|parcel|storybook|cypress|jest|turbo|nx)\b",
-  "\b(py(thon)?|uv|uvx|poetry|pipenv)(\.exe)?\b.*\b(pytest|uvicorn|flask|django|runserver|serve|watch|test|dev)\b",
-  "\b(pytest|uvicorn)\b",
+  "\b(next|nuxt|astro|webpack|rollup|parcel|storybook|cypress|jest|turbo|nx|nest|remix|svelte-kit)\b",
+  "\b(tsx|ts-node|ts-node-dev|nodemon|vite-node)\b.*\b(watch|dev|start|serve|run)\b",
+  "\b(py(thon)?|uv|uvx|poetry|pipenv)(\.exe)?\b.*\b(pytest|uvicorn|gunicorn|flask|django|runserver|serve|watch|test|dev)\b",
+  "\b(pytest|uvicorn|gunicorn)\b",
   "\bflask(\.exe)?\b.*\brun\b",
   "\bdjango-admin(\.exe)?\b.*\brunserver\b",
   "manage\.py\b.*\b(runserver|test)\b",
-  "\b(gradle(w)?(\.bat)?|mvn(\.cmd)?|java(\.exe)?)\b.*\b(test|bootrun|spring-boot:run|quarkus:dev|dev|run)\b",
+  "\b(gradle(w)?(\.bat)?|mvn(\.cmd)?|java(\.exe)?)\b.*\b(test|bootrun|spring-boot:run|quarkus:dev|dev|run|serve)\b",
   "\bdotnet(\.exe)?\b.*\b(watch|run|test|build|publish)\b",
   "\b(go(\.exe)?)\b.*\b(run|test)\b",
   "\b(air|reflex)(\.exe)?\b",
   "\b(bundle(\.bat)?|rails(\.exe)?|rspec(\.exe)?|ruby(\.exe)?)\b.*\b(server|test|spec|dev)\b",
   "\b(php(\.exe)?|composer(\.bat)?|artisan)\b.*\b(serve|test)\b",
-  "\bartisan\b.*\b(serve|test)\b"
+  "\bartisan\b.*\b(serve|test)\b",
+  "\b(mix|iex|rebar3)\b.*\b(phx\.server|test|dev|serve|run)\b",
+  "\b(cmake|ctest|meson|ninja|make)\b.*\b(test|build|check|run)\b",
+  "\b(swift|dart|flutter)\b.*\b(run|test|build|serve)\b"
 )
 
 $script:HighConfidenceNodePatterns = @(
   "\b(vite|vitest)\b",
-  "node_modules\\vite\\",
-  "node_modules\\vitest\\"
+  "node_modules[/\\](vite|vitest)[/\\]"
 )
 
 $script:WorkspaceScopedNodePatterns = @(
   "\bnpm(\.cmd)?\b.*\b(run|exec)\b.*\b(dev|build|preview|test)\b",
   "\b(pnpm|pnpx|yarn|bun|bunx)(\.cmd|\.exe)?\b.*\b(dev|build|preview|test|start|serve|watch)\b",
-  "\b(next|nuxt|astro|webpack|rollup|parcel|storybook|cypress|jest|turbo|nx)\b",
-  "node_modules\\(next|nuxt|astro|webpack|rollup|parcel|storybook|cypress|jest|turbo|nx)\\"
+  "\b(next|nuxt|astro|webpack|rollup|parcel|storybook|cypress|jest|turbo|nx|nest|remix|svelte-kit)\b",
+  "\b(tsx|ts-node|ts-node-dev|nodemon|vite-node)\b.*\b(watch|dev|start|serve|run)\b",
+  "node_modules[/\\](next|nuxt|astro|webpack|rollup|parcel|storybook|cypress|jest|turbo|nx|nest|remix|svelte-kit|tsx|ts-node|ts-node-dev|nodemon|vite-node)[/\\]"
 )
 
 $script:WorkspaceScopedRuntimePatterns = @(
-  "\b(py(thon)?|uv|uvx|poetry|pipenv)(\.exe)?\b.*\b(pytest|uvicorn|flask|django|runserver|serve|watch|test|dev)\b",
-  "\b(pytest|uvicorn)\b",
+  "\b(py(thon)?|uv|uvx|poetry|pipenv)(\.exe)?\b.*\b(pytest|uvicorn|gunicorn|flask|django|runserver|serve|watch|test|dev)\b",
+  "\b(pytest|uvicorn|gunicorn)\b",
   "\bflask(\.exe)?\b.*\brun\b",
   "\bdjango-admin(\.exe)?\b.*\brunserver\b",
   "manage\.py\b.*\b(runserver|test)\b",
@@ -66,9 +72,12 @@ $script:WorkspaceScopedRuntimePatterns = @(
   "\b(bundle(\.bat)?|rails(\.exe)?|rspec(\.exe)?|ruby(\.exe)?)\b.*\b(server|test|spec|dev)\b",
   "\b(php(\.exe)?|composer(\.bat)?|artisan)\b.*\b(serve|test)\b",
   "\bartisan\b.*\b(serve|test)\b",
-  "\b(gradle(w)?(\.bat)?|mvn(\.cmd)?|java(\.exe)?)\b.*\b(test|bootrun|spring-boot:run|quarkus:dev|dev|run)\b",
+  "\b(gradle(w)?(\.bat)?|mvn(\.cmd)?|java(\.exe)?)\b.*\b(test|bootrun|spring-boot:run|quarkus:dev|dev|run|serve)\b",
   "\b(bun|bunx)(\.exe)?\b.*\b(dev|build|preview|test|start|serve|watch)\b",
-  "\b(deno(\.exe)?)\b.*\b(run|test|task)\b"
+  "\b(deno(\.exe)?)\b.*\b(run|test|task)\b",
+  "\b(mix|iex|rebar3)\b.*\b(phx\.server|test|dev|serve|run)\b",
+  "\b(swift|dart|flutter)\b.*\b(run|test|build|serve)\b",
+  "\b(cmake|ctest|meson|ninja|make)\b.*\b(test|build|check|run)\b"
 )
 
 function New-ProcessRecord {
@@ -101,6 +110,25 @@ function Get-WorkspacePattern {
 }
 
 function Test-PatternList {
+  param(
+    [string]$Value,
+    [string[]]$Patterns
+  )
+
+  if ([string]::IsNullOrWhiteSpace($Value)) {
+    return $false
+  }
+
+  foreach ($pattern in $Patterns) {
+    if ($Value -match $pattern) {
+      return $true
+    }
+  }
+
+  return $false
+}
+
+function Test-NamePatternList {
   param(
     [string]$Value,
     [string[]]$Patterns
@@ -183,8 +211,8 @@ function Classify-TemporaryProcess {
     return $null
   }
 
-  if ($name -in $script:ProtectedShellNames) {
-    if ($parentName -eq "Codex.exe") {
+  if (Test-NamePatternList -Value $name -Patterns $script:ProtectedShellNamePatterns) {
+    if ($parentName -match $script:CodexParentNamePattern) {
       return New-ProcessRecord -Process $Process -Category "protected-shell" -Killable:$false -Reason "Active Codex session shell"
     }
 
@@ -202,7 +230,7 @@ function Classify-TemporaryProcess {
     return $null
   }
 
-  if ($name -eq "cmd.exe") {
+  if (Test-NamePatternList -Value $name -Patterns $script:CmdShellNamePatterns) {
     if (Test-TemporaryShellCommandLine -CommandLine $commandLine -WorkspaceMatch $workspaceMatch) {
       return New-ProcessRecord -Process $Process -Category "tool-shell" -Killable:$true -Reason "Task-owned shell for temporary tool work"
     }
@@ -210,7 +238,7 @@ function Classify-TemporaryProcess {
     return $null
   }
 
-  if ($name -eq "node.exe") {
+  if (Test-NamePatternList -Value $name -Patterns $script:NodeNamePatterns) {
     if ($commandLine -match "telemetry\\watchdog\\main\.js") {
       return New-ProcessRecord -Process $Process -Category "devtools-watchdog" -Killable:$true -Reason "DevTools MCP watchdog"
     }
@@ -238,7 +266,7 @@ function Classify-TemporaryProcess {
     return $null
   }
 
-  if ($name -in $script:GenericRuntimeNames) {
+  if (Test-NamePatternList -Value $name -Patterns $script:GenericRuntimeNamePatterns) {
     if ($workspaceMatch -and (Test-PatternList -Value $commandLine -Patterns $script:WorkspaceScopedRuntimePatterns)) {
       return New-ProcessRecord -Process $Process -Category "dev-tool" -Killable:$true -Reason "Workspace-owned dev or test runtime"
     }
@@ -246,7 +274,7 @@ function Classify-TemporaryProcess {
     return $null
   }
 
-  if ($name -in $script:BrowserNames) {
+  if (Test-NamePatternList -Value $name -Patterns $script:BrowserNamePatterns) {
     if ($commandLine -match $script:BrowserDebugPattern) {
       return New-ProcessRecord -Process $Process -Category "browser-debug" -Killable:$true -Reason "Browser automation or remote-debug session"
     }
