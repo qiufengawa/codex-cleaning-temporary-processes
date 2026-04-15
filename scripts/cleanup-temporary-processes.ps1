@@ -3,6 +3,7 @@ param(
   [ValidateSet("inspect", "cleanup", "checkpoint-cleanup")]
   [string]$Mode = "inspect",
   [string]$Workspace,
+  [switch]$ConfirmCurrentThreadExplicitAutomation,
   [switch]$AsJson
 )
 
@@ -18,6 +19,7 @@ function Get-ClassifiedTemporaryProcessSnapshot {
   param(
     [string]$Workspace,
     [string]$ThreadId,
+    [bool]$AllowCurrentThreadExplicitAutomationSeed = $false,
     [datetime]$CurrentTimeUtc = [datetime]::UtcNow,
     [int]$CurrentProcessId = $PID
   )
@@ -35,7 +37,7 @@ function Get-ClassifiedTemporaryProcessSnapshot {
     $null = $childrenByParent[$parentId].Add([int]$process.ProcessId)
   }
 
-  $classified = Get-TemporaryProcessClassifications -Processes $processes -Workspace $Workspace -ThreadOwnershipEntries $threadOwnershipEntries -CurrentProcessId $CurrentProcessId |
+  $classified = Get-TemporaryProcessClassifications -Processes $processes -Workspace $Workspace -ThreadOwnershipEntries $threadOwnershipEntries -AllowCurrentThreadExplicitAutomationSeed:$AllowCurrentThreadExplicitAutomationSeed -CurrentProcessId $CurrentProcessId |
     ForEach-Object {
       $decision = Get-CleanupDecision -Record $_ -Mode $Mode
       $_ | Add-Member -NotePropertyName Decision -NotePropertyValue $decision.Decision -Force
@@ -118,7 +120,8 @@ function Test-InventoryProcessIdentityMatch {
 
 $threadId = Get-CurrentCodexThreadId
 $snapshotTimeUtc = [datetime]::UtcNow
-$snapshot = Get-ClassifiedTemporaryProcessSnapshot -Workspace $Workspace -ThreadId $threadId -CurrentTimeUtc $snapshotTimeUtc -CurrentProcessId $PID
+$allowCurrentThreadExplicitAutomationSeed = $ConfirmCurrentThreadExplicitAutomation -and -not [string]::IsNullOrWhiteSpace($Workspace)
+$snapshot = Get-ClassifiedTemporaryProcessSnapshot -Workspace $Workspace -ThreadId $threadId -AllowCurrentThreadExplicitAutomationSeed:$allowCurrentThreadExplicitAutomationSeed -CurrentTimeUtc $snapshotTimeUtc -CurrentProcessId $PID
 $classified = @($snapshot.Classified)
 
 if ($Mode -in @("cleanup", "checkpoint-cleanup")) {
@@ -159,7 +162,7 @@ if ($Mode -in @("cleanup", "checkpoint-cleanup")) {
     }
   }
 
-  $postSnapshot = Get-ClassifiedTemporaryProcessSnapshot -Workspace $Workspace -ThreadId $threadId -CurrentTimeUtc ([datetime]::UtcNow) -CurrentProcessId $PID
+  $postSnapshot = Get-ClassifiedTemporaryProcessSnapshot -Workspace $Workspace -ThreadId $threadId -AllowCurrentThreadExplicitAutomationSeed:$allowCurrentThreadExplicitAutomationSeed -CurrentTimeUtc ([datetime]::UtcNow) -CurrentProcessId $PID
   $postClassified = @($postSnapshot.Classified)
   $postProcessIds = New-Object 'System.Collections.Generic.HashSet[int]'
   foreach ($process in $postSnapshot.Processes) {

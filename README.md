@@ -23,7 +23,7 @@ The implementation uses a shared PowerShell entrypoint plus a shell wrapper for 
 - Windows: PowerShell is available by default
 - macOS or Linux: install PowerShell 7 so `pwsh` is available
 - If your checkout does not preserve executable bits, run the Unix wrapper through `bash`
-- Thread-aware explicit automation recovery works best when Codex exposes `CODEX_THREAD_ID` and you pass `-Workspace`; on a first confirmed Codex-owned explicit-automation observation, the current thread can seed ownership for a later reclaim pass. If no thread id is available, explicit automation falls back to current-task lineage while generic dev tools keep using workspace and ancestor evidence
+- Thread-aware follow-up cleanup for DevTools MCP, browser automation, and remote-debug leftovers requires Codex to expose `CODEX_THREAD_ID`, a non-blank `-Workspace`, and an explicit `-ConfirmCurrentThreadExplicitAutomation` on the first follow-up pass where this same thread confirms it actually used that automation in the checkpoint that just finished. That first confirmed pass records same-thread ownership for that workspace so a later same-workspace pass can reclaim the leftover if it is still present. Blank workspace is not a wildcard. If no thread id is available, explicit automation falls back to current-task lineage while generic dev tools keep using workspace and ancestor evidence
 
 ## Ecosystem Coverage
 
@@ -61,11 +61,27 @@ The classification rules stay intentionally conservative when attributing a proc
 - Prefer passing `-Workspace` so command lines can be matched to the active repo or project path
 - Relative child commands can inherit task ownership only when a parent or ancestor already has both workspace evidence and known dev, test, build, serve, or watch markers
 - Explicit automation and remote-debug processes stay `inspect-only` unless current-task lineage or current-thread-owned evidence is strong enough; workspace match alone is not enough
-- A local current-thread ownership ledger can seed from a first confirmed Codex-owned explicit-automation observation and keep that automation reclaimable on later passes, even if the original launcher shell exits later
+- Use `-ConfirmCurrentThreadExplicitAutomation` only when this same Codex thread actually used that automation in the checkpoint that just finished
+- The first confirmed pass must also include a non-blank `-Workspace`; it records same-thread ownership for that workspace so a later same-workspace pass can promote those leftovers to cleanup if they are still present
 - Current-thread ownership never makes generic runtimes or ordinary dev tools killable by itself
-- Codex `app-server` ancestry can make explicit automation eligible for current-thread ledger seeding, but it is not immediate cleanup permission by itself
+- Codex `app-server` ancestry can make explicit automation eligible for same-thread recording, but it is not immediate cleanup permission by itself
+- A blank workspace is never a wildcard and cannot seed or promote current-thread ownership
 - Codex-owned shell ancestry by itself is never enough to make descendants killable
 - If the evidence is weak or ambiguous, the process remains `inspect-only` or is ignored entirely
+
+## Confirming Explicit Automation
+
+If a finished checkpoint actually used DevTools MCP, Playwright-style automation, or a remote-debug browser in this same Codex thread, use the first follow-up pass to confirm that fact:
+
+```powershell
+powershell -ExecutionPolicy Bypass -File "$env:CODEX_HOME\skills\codex-cleaning-temporary-processes\scripts\cleanup-temporary-processes.ps1" -Mode inspect -Workspace "C:\Projects\ExampleApp" -ConfirmCurrentThreadExplicitAutomation
+```
+
+That confirmation is only for explicit automation. It does not widen cleanup for generic dev tools.
+
+- Pair the switch with `-Workspace` every time; blank `-Workspace` never means "any workspace"
+- The first confirmed pass records same-thread ownership for that workspace; a later same-workspace pass can reclaim leftovers that remain after the launcher exits
+- Do not use the switch for guesses, other conversations, other workspaces, or processes that only look related because they descend from `Codex.exe app-server`
 
 ## Recommended Strategy
 
@@ -92,8 +108,8 @@ This skill is intentionally conservative.
 
 - It preserves the active Codex shell and Codex helper shells
 - It preserves ordinary browsers that do not carry automation or remote-debug flags
-- It preserves DevTools MCP, browser automation, and remote-debug sessions when current-task lineage or current-thread ownership is not proven
-- It may continue to reclaim current-thread-owned explicit automation that this Codex conversation already seeded or otherwise proved it owned earlier in the task
+- It preserves DevTools MCP, browser automation, and remote-debug sessions when current-task lineage or a prior same-thread confirmed claim is not proven
+- It may later reclaim current-thread-owned explicit automation only after the same Codex conversation confirmed that automation with `-ConfirmCurrentThreadExplicitAutomation` and the same non-blank workspace, or when current-task lineage already proves ownership
 - It preserves ambiguous processes when the evidence is not strong enough
 - It keeps likely reusable dev servers in `inspect-only` during checkpoint cleanup
 - It only cleans high-confidence temporary process trees that no longer provide value to the current step
@@ -112,8 +128,8 @@ Incremental `checkpoint-cleanup` is for clearly finished steps. Final `cleanup` 
 When several Codex conversations, branches, or repositories are active at once, the skill should only clean processes that belong to the current task.
 
 - Workspace-backed dev, test, build, serve, and runtime processes must match the current workspace or a task-owned ancestor.
-- Explicit automation such as DevTools MCP, Playwright-style helpers, or remote-debug browsers stays `inspect-only` unless the current task can prove lineage or the same Codex thread has already seeded or proved ownership.
-- Current-thread ownership is only a recovery hint for explicit automation that the same Codex conversation already seeded or proved it owned; workspace match alone is not a blanket same-workspace cleanup permission.
+- Explicit automation such as DevTools MCP, Playwright-style helpers, or remote-debug browsers stays `inspect-only` unless the current task can prove lineage or the same Codex thread already confirmed that automation with `-ConfirmCurrentThreadExplicitAutomation` and the same workspace.
+- Current-thread ownership is only a recovery hint for explicit automation that the same Codex conversation explicitly confirmed it used; workspace match alone is not a blanket same-workspace cleanup permission, and blank workspace never matches everything.
 - Codex-owned ancestry by itself is not enough to let one project clean another project's process tree.
 
 ## What It Will Not Do
@@ -123,6 +139,8 @@ When several Codex conversations, branches, or repositories are active at once, 
 - It will not kill unmatched runtimes just because they are `node`, `python`, `java`, or similar
 - It will not kill DevTools MCP, browser automation, or remote-debug sessions from another workspace or Codex conversation when current-task lineage is not established
 - It will not use current-thread ownership alone to kill generic dev, test, build, or runtime processes
+- It will not treat a blank `-Workspace` as a wildcard for first confirmation or later same-thread promotion
+- It will not treat Codex `app-server` ancestry alone as proof that a descendant belongs to the current task or is safe to clean
 - It will not treat Codex-owned shell ancestry alone as proof that a descendant belongs to the current task
 - It will not force cleanup when evidence is weak; those processes stay in `inspect-only`
 - Direct browser-process matching currently targets Chromium and Edge-family remote-debug sessions; non-Chromium automation is mainly identified through helper or wrapper processes
@@ -167,7 +185,7 @@ The `processes` array in cleanup modes is re-inspected after kill attempts, so c
 - `docs/trigger-regression-scenarios.md`: English trigger timing scenarios
 - `docs/trigger-regression-scenarios.zh-CN.md`: Chinese trigger timing scenarios
 
-Thread-aware ownership state is local runtime data, not part of the public package. When available, it is stored under `$CODEX_HOME/state/codex-cleaning-temporary-processes/thread-ownership/`; otherwise the scripts fall back to the OS temporary directory. If `CODEX_THREAD_ID` is missing, that optimization is disabled and explicit automation stays on current-task lineage while generic dev tools continue using workspace and ancestor evidence.
+Thread-aware ownership state is local runtime data, not part of the public package. When available, it is stored under `$CODEX_HOME/state/codex-cleaning-temporary-processes/thread-ownership/`; otherwise the scripts fall back to the OS temporary directory. This optimization only participates when `CODEX_THREAD_ID` is available and you pass a non-blank `-Workspace`; blank workspace is not a wildcard. If `CODEX_THREAD_ID` is missing, explicit automation stays on current-task lineage while generic dev tools continue using workspace and ancestor evidence.
 
 ## Installation
 
@@ -197,9 +215,12 @@ bash "$CODEX_HOME/skills/codex-cleaning-temporary-processes/scripts/cleanup-temp
 
 Switch `inspect` to `checkpoint-cleanup` after a risky step finishes. Use `cleanup` only when the remaining temporary process trees are definitely no longer needed.
 
-Example incremental cleanup after DevTools MCP, tests, or other finished one-shot steps:
+If the finished step really used DevTools MCP, Playwright-style automation, or a remote-debug browser in this same thread, add `-ConfirmCurrentThreadExplicitAutomation` on the first follow-up pass together with the workspace. That first confirmed pass records same-thread ownership; a later same-workspace pass can reclaim leftovers that remain after their launcher exits.
+
+Example follow-up after a finished DevTools MCP step:
 
 ```powershell
+powershell -ExecutionPolicy Bypass -File "$env:CODEX_HOME\skills\codex-cleaning-temporary-processes\scripts\cleanup-temporary-processes.ps1" -Mode inspect -Workspace "C:\Projects\ExampleApp" -ConfirmCurrentThreadExplicitAutomation
 powershell -ExecutionPolicy Bypass -File "$env:CODEX_HOME\skills\codex-cleaning-temporary-processes\scripts\cleanup-temporary-processes.ps1" -Mode checkpoint-cleanup -Workspace "C:\Projects\ExampleApp"
 ```
 
@@ -209,7 +230,9 @@ powershell -ExecutionPolicy Bypass -File "$env:CODEX_HOME\skills\codex-cleaning-
 - If a long task stays inside one assistant turn, ask for checkpoint cleanup between finished steps instead of waiting for the final answer.
 - If the next step may reuse a process, ask Codex to run `inspect` first rather than forcing cleanup.
 - If a process is preserved, that may be intentional because workspace evidence, automation flags, or other strong ownership signals were not present.
-- If detached DevTools or browser-debug helpers came from this same Codex conversation, a first confirmed observation can seed current-thread ownership and a later pass may still reclaim them even after the original launcher shell is gone.
+- If detached DevTools or browser-debug helpers came from this same Codex conversation, use `-ConfirmCurrentThreadExplicitAutomation` only on a follow-up pass where this thread is explicitly confirming it really used that automation in the finished checkpoint, and always pair it with the workspace.
+- If `-Workspace` is blank, missing, or points at a different repo, same-thread confirmation will not seed or promote ownership. Blank workspace is not a wildcard.
+- If a process only traces back to `Codex.exe app-server`, that is still not enough to clean it; the same thread must confirm real explicit-automation use and provide the workspace, or the current task must still have live lineage.
 - If several Codex conversations or projects are active at once, expect unowned DevTools or browser-debug leftovers to remain `inspect-only` until the current task can prove ownership.
 
 ## Testing

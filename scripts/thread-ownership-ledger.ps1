@@ -136,7 +136,7 @@ function Test-ThreadOwnershipWorkspaceMatch {
 
   $normalizedWorkspace = Normalize-ThreadOwnershipWorkspace -Workspace $Workspace
   if ([string]::IsNullOrWhiteSpace($normalizedWorkspace)) {
-    return $true
+    return $false
   }
 
   $normalizedEntryWorkspace = Normalize-ThreadOwnershipWorkspace -Workspace $EntryWorkspace
@@ -325,6 +325,12 @@ function Update-ThreadOwnershipEntries {
     $entriesByKey[$key] = $entry
   }
 
+  if ([string]::IsNullOrWhiteSpace($normalizedWorkspace)) {
+    $updatedEntries = @($entriesByKey.Values | Sort-Object Category, Name, ProcessId)
+    Save-ThreadOwnershipLedger -ThreadId $ThreadId -Entries $updatedEntries -CurrentTimeUtc $CurrentTimeUtc
+    return $updatedEntries
+  }
+
   foreach ($record in @($ClassifiedRecords)) {
     if (-not (Test-ShouldPersistThreadOwnershipRecord -Record $record)) {
       continue
@@ -335,7 +341,7 @@ function Update-ThreadOwnershipEntries {
       continue
     }
 
-    $entry = ConvertTo-ThreadOwnershipEntry -Record $record -Workspace $Workspace -ObservedAtUtc $CurrentTimeUtc
+    $entry = ConvertTo-ThreadOwnershipEntry -Record $record -Workspace $normalizedWorkspace -ObservedAtUtc $CurrentTimeUtc
     $key = '{0}|{1}|{2}|{3}|{4}' -f $processId, [string]$entry.Name, [string]$entry.CommandLine, [string]$entry.Category, [string]$entry.Workspace
     $entriesByKey[$key] = $entry
   }

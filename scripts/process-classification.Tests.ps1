@@ -96,7 +96,7 @@ Describe 'Get-TemporaryProcessClassifications' {
     $result[0].Killable | Should Be $true
   }
 
-  It 'classifies thread-owned DevTools MCP node processes as killable without fresh workspace evidence' {
+  It 'classifies thread-owned DevTools MCP node processes as killable when the current workspace matches the ledger' {
     . $libraryPath
 
     $processes = @(
@@ -118,7 +118,7 @@ Describe 'Get-TemporaryProcessClassifications' {
       }
     )
 
-    $result = @(Get-TemporaryProcessClassifications -Processes $processes -ThreadOwnershipEntries $threadOwnershipEntries)
+    $result = @(Get-TemporaryProcessClassifications -Processes $processes -Workspace 'C:\Repo' -ThreadOwnershipEntries $threadOwnershipEntries)
 
     $result.Count | Should Be 1
     $result[0].Category | Should Be 'devtools-mcp'
@@ -320,7 +320,7 @@ Describe 'Get-TemporaryProcessClassifications' {
     $result[0].Killable | Should Be $true
   }
 
-  It 'marks Codex app-server explicit automation launcher shells as thread-seedable but not killable without a matching ledger claim' {
+  It 'marks Codex app-server explicit automation launcher shells as thread-seedable only when the caller explicitly opts in with a workspace' {
     . $libraryPath
 
     $processes = @(
@@ -344,7 +344,7 @@ Describe 'Get-TemporaryProcessClassifications' {
       }
     )
 
-    $result = @(Get-TemporaryProcessClassifications -Processes $processes -Workspace 'C:\Repo' -CurrentProcessId 164 | Where-Object { $_.ProcessId -eq 165 })
+    $result = @(Get-TemporaryProcessClassifications -Processes $processes -Workspace 'C:\Repo' -AllowCurrentThreadExplicitAutomationSeed $true -CurrentProcessId 164 | Where-Object { $_.ProcessId -eq 165 })
 
     $result.Count | Should Be 1
     $result[0].Category | Should Be 'tool-shell'
@@ -352,7 +352,95 @@ Describe 'Get-TemporaryProcessClassifications' {
     $result[0].ThreadOwnershipSeedable | Should Be $true
   }
 
-  It 'classifies Codex app-server explicit automation descendants as killable when the current thread ledger matches the workspace' {
+  It 'does not seed Codex app-server explicit automation launcher shells from shared ancestry without explicit opt-in' {
+    . $libraryPath
+
+    $processes = @(
+      [pscustomobject]@{
+        ProcessId = 179
+        ParentProcessId = 1
+        Name = 'Codex'
+        CommandLine = 'Codex.exe app-server'
+      }
+      [pscustomobject]@{
+        ProcessId = 180
+        ParentProcessId = 179
+        Name = 'powershell.exe'
+        CommandLine = 'powershell.exe -NoProfile'
+      }
+      [pscustomobject]@{
+        ProcessId = 181
+        ParentProcessId = 179
+        Name = 'cmd.exe'
+        CommandLine = 'cmd.exe /d /s /c npx -y chrome-devtools-mcp@latest'
+      }
+    )
+
+    $result = @(Get-TemporaryProcessClassifications -Processes $processes -Workspace 'C:\Repo' -CurrentProcessId 180 | Where-Object { $_.ProcessId -eq 181 })
+
+    $result.Count | Should Be 1
+    $result[0].Category | Should Be 'tool-shell'
+    $result[0].Killable | Should Be $false
+    $result[0].ThreadOwnershipSeedable | Should Be $false
+  }
+
+  It 'does not mark Codex app-server explicit automation as thread-seedable when the workspace is blank even with explicit opt-in' -TestCases @(
+    @{
+      Name = 'launcher shell'
+      ProcessId = 186
+      ProcessName = 'cmd.exe'
+      CommandLine = 'cmd.exe /d /s /c npx -y chrome-devtools-mcp@latest'
+      ExpectedCategory = 'tool-shell'
+    },
+    @{
+      Name = 'devtools service'
+      ProcessId = 187
+      ProcessName = 'node.exe'
+      CommandLine = 'node C:\Temp\npm-cache\_npx\pkg\chrome-devtools-mcp\build\src\bin\chrome-devtools-mcp.js'
+      ExpectedCategory = 'devtools-mcp'
+    },
+    @{
+      Name = 'remote-debug browser'
+      ProcessId = 188
+      ProcessName = 'msedge.exe'
+      CommandLine = '"C:\Program Files\Microsoft\Edge\Application\msedge.exe" --remote-debugging-port=9222 --user-data-dir=C:\Repo\.tmp\edge-profile'
+      ExpectedCategory = 'browser-debug'
+    }
+  ) {
+    param($Name, $ProcessId, $ProcessName, $CommandLine, $ExpectedCategory)
+
+    . $libraryPath
+
+    $processes = @(
+      [pscustomobject]@{
+        ProcessId = 184
+        ParentProcessId = 1
+        Name = 'Codex'
+        CommandLine = 'Codex.exe app-server'
+      }
+      [pscustomobject]@{
+        ProcessId = 185
+        ParentProcessId = 184
+        Name = 'powershell.exe'
+        CommandLine = 'powershell.exe -NoProfile'
+      }
+      [pscustomobject]@{
+        ProcessId = $ProcessId
+        ParentProcessId = 184
+        Name = $ProcessName
+        CommandLine = $CommandLine
+      }
+    )
+
+    $result = @(Get-TemporaryProcessClassifications -Processes $processes -Workspace '   ' -AllowCurrentThreadExplicitAutomationSeed $true -CurrentProcessId 185 | Where-Object { $_.ProcessId -eq $ProcessId })
+
+    $result.Count | Should Be 1
+    $result[0].Category | Should Be $ExpectedCategory
+    $result[0].Killable | Should Be $false
+    $result[0].ThreadOwnershipSeedable | Should Be $false
+  }
+
+  It 'classifies Codex app-server explicit automation descendants as killable from a matching current-thread ledger without reseeding' {
     . $libraryPath
 
     $processes = @(
@@ -437,22 +525,22 @@ Describe 'Get-TemporaryProcessClassifications' {
     $launcherShell.Count | Should Be 1
     $launcherShell[0].Category | Should Be 'tool-shell'
     $launcherShell[0].Killable | Should Be $true
-    $launcherShell[0].ThreadOwnershipSeedable | Should Be $true
+    $launcherShell[0].ThreadOwnershipSeedable | Should Be $false
 
     $launcherNode.Count | Should Be 1
     $launcherNode[0].Category | Should Be 'devtools-launcher'
     $launcherNode[0].Killable | Should Be $true
-    $launcherNode[0].ThreadOwnershipSeedable | Should Be $true
+    $launcherNode[0].ThreadOwnershipSeedable | Should Be $false
 
     $serviceNode.Count | Should Be 1
     $serviceNode[0].Category | Should Be 'devtools-mcp'
     $serviceNode[0].Killable | Should Be $true
-    $serviceNode[0].ThreadOwnershipSeedable | Should Be $true
+    $serviceNode[0].ThreadOwnershipSeedable | Should Be $false
 
     $watchdogNode.Count | Should Be 1
     $watchdogNode[0].Category | Should Be 'devtools-watchdog'
     $watchdogNode[0].Killable | Should Be $true
-    $watchdogNode[0].ThreadOwnershipSeedable | Should Be $true
+    $watchdogNode[0].ThreadOwnershipSeedable | Should Be $false
   }
 
   It 'does not let a mismatched workspace ledger claim make Codex app-server explicit automation killable' {
@@ -494,7 +582,7 @@ Describe 'Get-TemporaryProcessClassifications' {
     $result.Count | Should Be 1
     $result[0].Category | Should Be 'devtools-mcp'
     $result[0].Killable | Should Be $false
-    $result[0].ThreadOwnershipSeedable | Should Be $true
+    $result[0].ThreadOwnershipSeedable | Should Be $false
   }
 
   It 'does not let workspace-only explicit automation launcher shells become killable without lineage or ledger ownership' {
@@ -1223,7 +1311,7 @@ Describe 'Get-TemporaryProcessClassifications' {
     $result[0].Killable | Should Be $false
   }
 
-  It 'classifies thread-owned remote-debug browser processes as killable without fresh lineage evidence' {
+  It 'classifies thread-owned remote-debug browser processes as killable when the current workspace matches the ledger' {
     . $libraryPath
 
     $processes = @(
@@ -1245,11 +1333,65 @@ Describe 'Get-TemporaryProcessClassifications' {
       }
     )
 
-    $result = @(Get-TemporaryProcessClassifications -Processes $processes -ThreadOwnershipEntries $threadOwnershipEntries)
+    $result = @(Get-TemporaryProcessClassifications -Processes $processes -Workspace 'C:\Repo' -ThreadOwnershipEntries $threadOwnershipEntries)
 
     $result.Count | Should Be 1
     $result[0].Category | Should Be 'browser-debug'
     $result[0].Killable | Should Be $true
+  }
+
+  It 'does not let a blank workspace promote thread-owned explicit automation from the ledger' -TestCases @(
+    @{
+      Name = 'launcher shell'
+      ProcessId = 182
+      ProcessName = 'cmd.exe'
+      CommandLine = 'cmd.exe /d /s /c npx -y chrome-devtools-mcp@latest'
+      Category = 'tool-shell'
+    },
+    @{
+      Name = 'devtools service'
+      ProcessId = 183
+      ProcessName = 'node.exe'
+      CommandLine = 'node C:\Temp\npm-cache\_npx\pkg\chrome-devtools-mcp\build\src\bin\chrome-devtools-mcp.js'
+      Category = 'devtools-mcp'
+    },
+    @{
+      Name = 'remote-debug browser'
+      ProcessId = 184
+      ProcessName = 'msedge.exe'
+      CommandLine = '"C:\Program Files\Microsoft\Edge\Application\msedge.exe" --remote-debugging-port=9222 --user-data-dir=C:\Repo\.tmp\edge-profile'
+      Category = 'browser-debug'
+    }
+  ) {
+    param($Name, $ProcessId, $ProcessName, $CommandLine, $Category)
+
+    . $libraryPath
+
+    $processes = @(
+      [pscustomobject]@{
+        ProcessId = $ProcessId
+        ParentProcessId = 1
+        Name = $ProcessName
+        CommandLine = $CommandLine
+      }
+    )
+    $threadOwnershipEntries = @(
+      [pscustomobject]@{
+        ProcessId = $ProcessId
+        Name = $ProcessName
+        CommandLine = $CommandLine
+        Category = $Category
+        Workspace = 'C:\Repo'
+        ObservedAtUtc = '2026-04-15T14:20:00Z'
+      }
+    )
+
+    $result = @(Get-TemporaryProcessClassifications -Processes $processes -Workspace '   ' -ThreadOwnershipEntries $threadOwnershipEntries)
+
+    $result.Count | Should Be 1
+    $result[0].Category | Should Be $Category
+    $result[0].Killable | Should Be $false
+    $result[0].ThreadOwnershipSeedable | Should Be $false
   }
 
   It 'does not classify relative dev commands without a workspace-owned ancestor' {

@@ -47,7 +47,10 @@ Require strong evidence before cleanup:
 - clear DevTools MCP markers
 - current-workspace match plus dev, test, build, preview, serve, run, or watch markers
 - for relative child commands, a parent or ancestor that already has both workspace evidence and known dev, test, build, serve, or watch markers
-- if multiple Codex tasks or workspaces may be active, explicit automation still needs current-task lineage or current-thread-owned explicit automation evidence; current-workspace match alone is not enough, and a current-thread-owned automation ledger may seed from a first confirmed Codex-owned explicit-automation observation and preserve that proof after the original launcher exits, but it never broadens cleanup for generic runtimes
+- if multiple Codex tasks or workspaces may be active, explicit automation still needs current-task lineage or current-thread-owned explicit automation evidence; current-workspace match alone is not enough
+- only pass `-ConfirmCurrentThreadExplicitAutomation` when this same Codex thread actually used DevTools MCP, browser automation, or remote debugging in the checkpoint that just finished
+- pair that switch with a non-blank `-Workspace`; the first confirmed pass seeds current-thread-owned explicit automation for that workspace, later same-workspace passes may reclaim it, and blank workspace is never a wildcard
+- current-thread-owned explicit automation evidence never broadens cleanup for generic runtimes
 
 If only one weak signal is present, inspect and report instead of killing.
 
@@ -65,6 +68,7 @@ Never kill:
 - user-owned runtimes such as Node, Python, Java, Ruby, PHP, Go, or .NET when they do not match current task work
 - DevTools MCP, browser automation, or remote-debug browser sessions that lack current-task lineage or current-thread-owned explicit automation evidence
 - Codex `app-server` ancestry by itself; it can make explicit automation ledger-seedable, but not immediately killable
+- explicit automation follow-up guesses when this thread did not actually use that automation in the finished checkpoint or when `-Workspace` is blank
 - descendants that only trace back to Codex shell ancestry without real workspace-backed task evidence
 - anything you are not highly confident is temporary
 
@@ -98,12 +102,21 @@ This skill is meant for mainstream development workflows across multiple ecosyst
 - use `inspect` first if the next step may reuse a process and you are not yet confident
 - use full `cleanup` only when ending the task or intentionally shutting down all remaining temporary process trees
 
+## Explicit Automation Follow-Up
+
+If a finished step actually used DevTools MCP, browser automation, or a remote-debug browser in this same thread:
+
+- use the first follow-up pass to add `-ConfirmCurrentThreadExplicitAutomation -Workspace <path>`
+- do this only when the thread is confirming real use in the checkpoint that just finished
+- treat the first confirmed pass as a record step; a later pass with the same workspace can reclaim leftovers that remain after their launcher exits
+- do not use the switch for generic dev tools, other workspaces, or anything that only looks related because of `Codex.exe app-server` ancestry
+
 ## What To Preserve
 
 - the Codex session shell and Codex helper shells
 - ordinary browsers opened for normal user activity
 - standalone runtimes with no current-workspace match
-- explicit automation from another workspace or Codex conversation when current-task lineage is not proven and the current Codex thread has not already claimed that automation
+- explicit automation from another workspace or Codex conversation when current-task lineage is not proven and the current Codex thread has not already confirmed that automation with the same workspace
 - interactive shells with no task-specific command markers
 - anything still producing output for the active task
 
@@ -113,7 +126,7 @@ This skill is meant for mainstream development workflows across multiple ecosyst
 - watchdog processes with `telemetry/watchdog/main.js`
 - launchers with `npx-cli.js -y chrome-devtools-mcp@latest`
 - wrapper shells whose command lines explicitly include `chrome-devtools-mcp`, `playwright`, or `--remote-debugging-port`
-- current-thread-owned explicit automation that this Codex conversation already seeded or proved it owned earlier in the task
+- current-thread-owned explicit automation that this Codex conversation already confirmed with `-ConfirmCurrentThreadExplicitAutomation` and the same workspace
 - temporary shells or runtime processes that clearly show dev, build, preview, test, serve, runserver, or watch modes for the current workspace
 - relative child processes only when a parent or ancestor is already workspace-backed and matches known dev, test, build, serve, or watch markers
 - browser processes only when command lines clearly include automation flags such as `--remote-debugging-port`, `--headless`, or `playwright`
@@ -134,11 +147,12 @@ For ordinary build, test, serve, and runtime processes, omit cleanup when you do
 ## Workflow
 
 1. After a high-risk step finishes, run `inspect` or `checkpoint-cleanup`.
-2. Review the decision fields and confirm which records are `cleanup-now`, `inspect-only`, or `preserve`.
-3. Clean only the temporary leftovers the current step no longer needs.
-4. Re-inspect and confirm the process tree is gone or reduced as expected.
-5. At true task end, optionally run full `cleanup` for the final sweep.
-6. Report what was killed, what failed to stop, and what was intentionally preserved.
+2. If that finished step actually used explicit automation in this same thread, make the first follow-up pass include `-ConfirmCurrentThreadExplicitAutomation -Workspace <path>`.
+3. Review the decision fields and confirm which records are `cleanup-now`, `inspect-only`, or `preserve`.
+4. Clean only the temporary leftovers the current step no longer needs.
+5. Re-inspect and confirm the process tree is gone or reduced as expected.
+6. At true task end, optionally run full `cleanup` for the final sweep.
+7. Report what was killed, what failed to stop, and what was intentionally preserved.
 
 Use the bundled scripts:
 
@@ -162,14 +176,16 @@ bash "$CODEX_HOME/skills/codex-cleaning-temporary-processes/scripts/cleanup-temp
 
 Pass `-Workspace` whenever a repo path helps distinguish current task-owned shells and runtimes from unrelated user processes.
 
+For DevTools MCP or browser-debug follow-up cleanup, add `-ConfirmCurrentThreadExplicitAutomation` only on the first follow-up pass where this same thread is confirming real use, and only with a non-blank `-Workspace`.
+
 ## Quick Reference
 
 | Situation | Action |
 | --- | --- |
 | After frontend, backend, mobile, or systems tooling that launched a one-shot command | Run `checkpoint-cleanup` after the step if those processes are no longer needed |
 | After Python, JVM, .NET, Go, Ruby, PHP, Elixir, Swift, Dart, or Node backend tooling | Inspect with `-Workspace`, then use `checkpoint-cleanup` only for non-reusable leftovers |
-| After DevTools MCP or browser-debug workflows | Use `checkpoint-cleanup` promptly to reclaim high-confidence MCP, watchdog, launcher, and automation trees |
-| Multiple Codex conversations or workspaces are active | Preserve explicit automation unless current-task lineage is strong or the current Codex thread already proved ownership of that same explicit automation; workspace match alone is not enough |
+| After DevTools MCP or browser-debug workflows | Use `-Workspace`, and only add `-ConfirmCurrentThreadExplicitAutomation` when this same thread actually used that automation in the finished checkpoint; the first confirmed pass seeds later same-workspace cleanup |
+| Multiple Codex conversations or workspaces are active | Preserve explicit automation unless current-task lineage is strong or the current Codex thread already confirmed ownership of that same explicit automation with the same workspace; workspace match alone is not enough |
 | User reports many runtime or shell processes | Inspect matching shell, runtime, and browser-debug processes first |
 | Only the Codex session shell or reusable dev servers remain | Stop and preserve them |
 
@@ -180,7 +196,9 @@ Pass `-Workspace` whenever a repo path helps distinguish current task-owned shel
 - Killing every tool wrapper shell instead of limiting checkpoint cleanup to one-shot commands or explicit automation wrappers
 - Killing normal browsers without remote-debug or headless flags
 - Letting one project or Codex conversation clean another project's explicit automation without current-task lineage or current-thread-owned evidence
+- Using `-ConfirmCurrentThreadExplicitAutomation` for automation this thread did not actually use in the finished checkpoint
 - Assuming current-thread ownership can make generic runtimes or ordinary dev tools killable by itself
+- Treating a blank `-Workspace` as a wildcard for same-thread explicit automation follow-up
 - Treating Codex-owned ancestry alone as sufficient proof that a relative child process belongs to the current task
 - Cleaning before test or build output is finished
 - Waiting until the whole task ends even though several finished tool steps already left dead temporary processes behind
@@ -198,4 +216,4 @@ Pass `-Workspace` whenever a repo path helps distinguish current task-owned shel
 - `inspect` mode lists temporary candidates and protected process classes
 - `checkpoint-cleanup` mode kills only high-confidence step-finished leftovers
 - `cleanup` mode kills only high-confidence temporary targets and any separately classified `cleanup-now` descendants, then reports the post-cleanup snapshot plus any failed kill ids
-- thread-owned explicit automation recovery uses local runtime state under `CODEX_HOME/state/...` or the OS temp directory when `CODEX_THREAD_ID` is available; first confirmed Codex-owned explicit-automation observations can seed that ledger, but Codex `app-server` ancestry alone never authorizes immediate cleanup; otherwise explicit automation falls back to current-task lineage while generic dev tools continue using workspace and ancestor evidence
+- thread-owned explicit automation recovery uses local runtime state under `CODEX_HOME/state/...` or the OS temp directory when `CODEX_THREAD_ID` is available; the first follow-up pass must explicitly confirm real same-thread automation use with `-ConfirmCurrentThreadExplicitAutomation` and a non-blank `-Workspace`, Codex `app-server` ancestry alone never authorizes immediate cleanup, and otherwise explicit automation falls back to current-task lineage while generic dev tools continue using workspace and ancestor evidence

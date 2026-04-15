@@ -105,7 +105,8 @@ function Get-TemporaryProcessClassifications {
     [object[]]`$Processes,
     [string]`$Workspace,
     [int]`$CurrentProcessId,
-    [object[]]`$ThreadOwnershipEntries
+    [object[]]`$ThreadOwnershipEntries,
+    [bool]`$AllowCurrentThreadExplicitAutomationSeed = `$false
   )
 
   `$threadOwnedIds = @()
@@ -131,7 +132,11 @@ $threadOwnedPromotionIdsJson
       `$category = [string]`$_.Category
     }
     if (`$_.PSObject.Properties['ThreadOwnershipSeedable']) {
-      `$threadOwnershipSeedable = [bool]`$_.ThreadOwnershipSeedable
+      `$threadOwnershipSeedable = (
+        [bool]`$_.ThreadOwnershipSeedable -and
+        `$AllowCurrentThreadExplicitAutomationSeed -and
+        (-not [string]::IsNullOrWhiteSpace(`$Workspace))
+      )
     }
 
     if ((`$promotionIds -contains [int]`$_.ProcessId) -and (`$threadOwnedIds -contains [int]`$_.ProcessId)) {
@@ -202,6 +207,35 @@ function Get-CurrentCodexThreadId {
   return 'thread-test'
 }
 
+function Normalize-ThreadOwnershipWorkspace {
+  param([string]`$Workspace)
+
+  if ([string]::IsNullOrWhiteSpace(`$Workspace)) {
+    return `$null
+  }
+
+  return `$Workspace.Trim().TrimEnd('\', '/')
+}
+
+function Test-ThreadOwnershipWorkspaceMatch {
+  param(
+    [string]`$EntryWorkspace,
+    [string]`$Workspace
+  )
+
+  `$normalizedWorkspace = Normalize-ThreadOwnershipWorkspace -Workspace `$Workspace
+  if ([string]::IsNullOrWhiteSpace(`$normalizedWorkspace)) {
+    return `$false
+  }
+
+  `$normalizedEntryWorkspace = Normalize-ThreadOwnershipWorkspace -Workspace `$EntryWorkspace
+  if ([string]::IsNullOrWhiteSpace(`$normalizedEntryWorkspace)) {
+    return `$false
+  }
+
+  return `$normalizedEntryWorkspace.Equals(`$normalizedWorkspace, [System.StringComparison]::OrdinalIgnoreCase)
+}
+
 function Get-ActiveThreadOwnershipEntries {
   param(
     [string]`$ThreadId,
@@ -212,7 +246,17 @@ function Get-ActiveThreadOwnershipEntries {
 
   `$traceValue = if ([string]::IsNullOrWhiteSpace(`$Workspace)) { '<none>' } else { `$Workspace }
   Add-Content -LiteralPath '$ledgerWorkspaceTracePathLiteral' -Value `$traceValue
-  return @(Get-StoredThreadOwnershipEntries | ForEach-Object { `$_ })
+  if ([string]::IsNullOrWhiteSpace(`$Workspace)) {
+    return @()
+  }
+
+  return @(
+    Get-StoredThreadOwnershipEntries |
+      Where-Object {
+        Test-ThreadOwnershipWorkspaceMatch -EntryWorkspace ([string]`$_.Workspace) -Workspace `$Workspace
+      } |
+      ForEach-Object { `$_ }
+  )
 }
 
 function Update-ThreadOwnershipEntries {
@@ -227,6 +271,12 @@ function Update-ThreadOwnershipEntries {
 
   if (-not `$script:PersistUpdatedThreadOwnership) {
     return @(`$ExistingEntries)
+  }
+
+  `$normalizedWorkspace = Normalize-ThreadOwnershipWorkspace -Workspace `$Workspace
+  if ([string]::IsNullOrWhiteSpace(`$normalizedWorkspace)) {
+    @() | ConvertTo-Json -Depth 6 | Set-Content -LiteralPath `$script:ThreadOwnershipStatePath
+    return @()
   }
 
   `$processMap = @{}
@@ -248,11 +298,12 @@ function Update-ThreadOwnershipEntries {
       continue
     }
 
-    if (-not [string]::IsNullOrWhiteSpace(`$Workspace) -and ([string]`$entry.Workspace -ne `$Workspace)) {
+    if (-not (Test-ThreadOwnershipWorkspaceMatch -EntryWorkspace ([string]`$entry.Workspace) -Workspace `$normalizedWorkspace)) {
       continue
     }
 
-    `$key = '{0}|{1}|{2}|{3}|{4}' -f `$processId, [string]`$entry.Name, [string]`$entry.CommandLine, [string]`$entry.Category, [string]`$entry.Workspace
+    `$entryWorkspace = Normalize-ThreadOwnershipWorkspace -Workspace ([string]`$entry.Workspace)
+    `$key = '{0}|{1}|{2}|{3}|{4}' -f `$processId, [string]`$entry.Name, [string]`$entry.CommandLine, [string]`$entry.Category, [string]`$entryWorkspace
     `$entriesByKey[`$key] = `$entry
   }
 
@@ -282,7 +333,7 @@ function Update-ThreadOwnershipEntries {
       Name          = [string]`$record.Name
       CommandLine   = `$commandLine
       Category      = `$category
-      Workspace     = `$Workspace
+      Workspace     = `$normalizedWorkspace
       ObservedAtUtc = `$CurrentTimeUtc.ToString('o')
     }
     `$key = '{0}|{1}|{2}|{3}|{4}' -f `$processId, [string]`$entry.Name, [string]`$entry.CommandLine, [string]`$entry.Category, [string]`$entry.Workspace
@@ -558,8 +609,41 @@ Describe 'cleanup-temporary-processes entrypoint' {
     @($ledgerWorkspaceTrace) | Should Be @('C:\Repo')
   }
 
-  It 'lets a first inspect pass seed current-thread ownership for later promotion' {
+  It 'seeds current-thread ownership on the first inspect pass only when explicitly confirmed with a workspace' {
     $harnessRoot = Join-Path $TestDrive 'cleanup-entrypoint-seeded-thread-ownership'
+    $preCleanupProcesses = @(
+      [pscustomobject]@{
+        ProcessId = 401
+        ParentProcessId = 1
+        Name = 'node'
+        CommandLine = 'node temp-devtools.js'
+        Category = 'devtools-mcp'
+        ThreadOwnershipSeedable = $true
+        Killable = $false
+        DesiredDecision = 'inspect-only'
+        DecisionReason = 'explicit automation lacks current-task ownership evidence'
+      }
+    )
+
+    $scriptUnderTest = New-CleanupEntrypointHarness `
+      -HarnessRoot $harnessRoot `
+      -PreCleanupProcesses $preCleanupProcesses `
+      -PostCleanupProcesses $preCleanupProcesses `
+      -FailStopIds @() `
+      -ThreadOwnershipEntries @() `
+      -ThreadOwnedPromotionIds @(401) `
+      -PersistUpdatedThreadOwnership $true
+
+    $firstOutput = & $scriptUnderTest -Mode inspect -Workspace 'C:\Repo' -ConfirmCurrentThreadExplicitAutomation -AsJson | ConvertFrom-Json
+    $secondOutput = & $scriptUnderTest -Mode inspect -Workspace 'C:\Repo' -AsJson | ConvertFrom-Json
+    $classificationTrace = Get-Content -LiteralPath (Join-Path $harnessRoot 'classification-thread-ownership-trace.txt')
+    $firstOutput.killableRoots | Should Be 0
+    $secondOutput.killableRoots | Should Be 1
+    @($classificationTrace) | Should Be @('<none>', '401')
+  }
+
+  It 'does not seed or promote explicit automation without current-thread confirmation' {
+    $harnessRoot = Join-Path $TestDrive 'cleanup-entrypoint-unconfirmed-thread-ownership'
     $preCleanupProcesses = @(
       [pscustomobject]@{
         ProcessId = 401
@@ -586,9 +670,59 @@ Describe 'cleanup-temporary-processes entrypoint' {
     $firstOutput = & $scriptUnderTest -Mode inspect -Workspace 'C:\Repo' -AsJson | ConvertFrom-Json
     $secondOutput = & $scriptUnderTest -Mode inspect -Workspace 'C:\Repo' -AsJson | ConvertFrom-Json
     $classificationTrace = Get-Content -LiteralPath (Join-Path $harnessRoot 'classification-thread-ownership-trace.txt')
+    $statePath = Join-Path $harnessRoot 'thread-ownership-state.json'
+    $storedEntries = if (Test-Path -LiteralPath $statePath) {
+      @((Get-Content -Raw -LiteralPath $statePath | ConvertFrom-Json))
+    } else {
+      @()
+    }
 
     $firstOutput.killableRoots | Should Be 0
-    $secondOutput.killableRoots | Should Be 1
-    @($classificationTrace) | Should Be @('<none>', '401')
+    $secondOutput.killableRoots | Should Be 0
+    @($classificationTrace) | Should Be @('<none>', '<none>')
+    $storedEntries.Count | Should Be 0
+  }
+
+  It 'does not seed or promote explicit automation when confirmation is used without a workspace' {
+    $harnessRoot = Join-Path $TestDrive 'cleanup-entrypoint-blank-workspace-thread-ownership'
+    $preCleanupProcesses = @(
+      [pscustomobject]@{
+        ProcessId = 401
+        ParentProcessId = 1
+        Name = 'node'
+        CommandLine = 'node temp-devtools.js'
+        Category = 'devtools-mcp'
+        ThreadOwnershipSeedable = $true
+        Killable = $false
+        DesiredDecision = 'inspect-only'
+        DecisionReason = 'explicit automation lacks current-task ownership evidence'
+      }
+    )
+
+    $scriptUnderTest = New-CleanupEntrypointHarness `
+      -HarnessRoot $harnessRoot `
+      -PreCleanupProcesses $preCleanupProcesses `
+      -PostCleanupProcesses $preCleanupProcesses `
+      -FailStopIds @() `
+      -ThreadOwnershipEntries @() `
+      -ThreadOwnedPromotionIds @(401) `
+      -PersistUpdatedThreadOwnership $true
+
+    $firstOutput = & $scriptUnderTest -Mode inspect -Workspace '   ' -ConfirmCurrentThreadExplicitAutomation -AsJson | ConvertFrom-Json
+    $secondOutput = & $scriptUnderTest -Mode inspect -Workspace 'C:\Repo' -AsJson | ConvertFrom-Json
+    $classificationTrace = Get-Content -LiteralPath (Join-Path $harnessRoot 'classification-thread-ownership-trace.txt')
+    $ledgerWorkspaceTrace = Get-Content -LiteralPath (Join-Path $harnessRoot 'ledger-workspace-trace.txt')
+    $statePath = Join-Path $harnessRoot 'thread-ownership-state.json'
+    $storedEntries = if (Test-Path -LiteralPath $statePath) {
+      @((Get-Content -Raw -LiteralPath $statePath | ConvertFrom-Json))
+    } else {
+      @()
+    }
+
+    $firstOutput.killableRoots | Should Be 0
+    $secondOutput.killableRoots | Should Be 0
+    @($classificationTrace) | Should Be @('<none>', '<none>')
+    @($ledgerWorkspaceTrace) | Should Be @('<none>', 'C:\Repo')
+    $storedEntries.Count | Should Be 0
   }
 }

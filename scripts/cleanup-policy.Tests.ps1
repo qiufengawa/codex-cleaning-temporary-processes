@@ -432,7 +432,7 @@ Describe 'Get-CleanupDecision' {
       }
     )
 
-    $record = @(Get-TemporaryProcessClassifications -Processes $processes -ThreadOwnershipEntries $threadOwnershipEntries)[0]
+    $record = @(Get-TemporaryProcessClassifications -Processes $processes -Workspace 'C:\Repo' -ThreadOwnershipEntries $threadOwnershipEntries)[0]
     $decision = Get-CleanupDecision -Record $record -Mode 'cleanup'
 
     $decision.Decision | Should Be 'cleanup-now'
