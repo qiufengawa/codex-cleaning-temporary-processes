@@ -101,6 +101,8 @@ This skill is meant for mainstream development workflows across multiple ecosyst
 
 For generic runtimes, prefer passing `-Workspace` so the script can distinguish current-task processes from unrelated user apps.
 
+For ordinary build, test, serve, and runtime processes, omit cleanup when you do not have workspace evidence. Without `-Workspace`, only explicit automation or remote-debug signatures should be treated as high-confidence cleanup targets.
+
 ## Protected Process Classes
 
 - shells directly owned by Codex
@@ -123,19 +125,19 @@ Use the bundled scripts:
 Windows:
 
 ```powershell
-powershell -ExecutionPolicy Bypass -File "$env:USERPROFILE\.codex\skills\codex-cleaning-temporary-processes\scripts\cleanup-temporary-processes.ps1" -Mode inspect -Workspace "C:\Projects\ExampleApp"
+powershell -ExecutionPolicy Bypass -File "$env:CODEX_HOME\skills\codex-cleaning-temporary-processes\scripts\cleanup-temporary-processes.ps1" -Mode inspect -Workspace "C:\Projects\ExampleApp"
 ```
 
 macOS or Linux with PowerShell:
 
 ```bash
-pwsh -NoProfile -File "$HOME/.codex/skills/codex-cleaning-temporary-processes/scripts/cleanup-temporary-processes.ps1" -Mode inspect -Workspace "/Users/example/project"
+pwsh -NoProfile -File "$CODEX_HOME/skills/codex-cleaning-temporary-processes/scripts/cleanup-temporary-processes.ps1" -Mode inspect -Workspace "/Users/example/project"
 ```
 
 macOS or Linux with the shell wrapper:
 
 ```bash
-bash "$HOME/.codex/skills/codex-cleaning-temporary-processes/scripts/cleanup-temporary-processes.sh" -Mode inspect -Workspace "/Users/example/project"
+bash "$CODEX_HOME/skills/codex-cleaning-temporary-processes/scripts/cleanup-temporary-processes.sh" -Mode inspect -Workspace "/Users/example/project"
 ```
 
 Pass `-Workspace` whenever a repo path helps distinguish current task-owned shells and runtimes from unrelated user processes.

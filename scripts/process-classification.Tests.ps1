@@ -280,6 +280,23 @@ Describe 'Get-TemporaryProcessClassifications' {
     $result[0].Killable | Should Be $true
   }
 
+  It 'does not classify pytest shells without workspace ownership' {
+    . $libraryPath
+
+    $processes = @(
+      [pscustomobject]@{
+        ProcessId = 118
+        ParentProcessId = 1
+        Name = 'bash'
+        CommandLine = '/bin/bash -lc "pytest tests/api"'
+      }
+    )
+
+    $result = @(Get-TemporaryProcessClassifications -Processes $processes)
+
+    $result.Count | Should Be 0
+  }
+
   It 'classifies workspace-scoped bash tsx watch shells as temporary tool shells' {
     . $libraryPath
 
@@ -353,6 +370,190 @@ Describe 'Get-TemporaryProcessClassifications' {
 
     $result.Count | Should Be 1
     $result[0].Category | Should Be 'dev-tool'
+    $result[0].Killable | Should Be $true
+  }
+
+  It 'does not treat sibling workspace paths as a workspace match' {
+    . $libraryPath
+
+    $processes = @(
+      [pscustomobject]@{
+        ProcessId = 119
+        ParentProcessId = 1
+        Name = 'pnpm'
+        CommandLine = 'pnpm dev --dir C:\Repo2'
+      }
+    )
+
+    $result = @(Get-TemporaryProcessClassifications -Processes $processes -Workspace 'C:\Repo')
+
+    $result.Count | Should Be 0
+  }
+
+  It 'classifies workspace-scoped pnpm direct processes as temporary dev tools' {
+    . $libraryPath
+
+    $processes = @(
+      [pscustomobject]@{
+        ProcessId = 120
+        ParentProcessId = 1
+        Name = 'pnpm'
+        CommandLine = 'pnpm dev --dir /repo'
+      }
+    )
+
+    $result = @(Get-TemporaryProcessClassifications -Processes $processes -Workspace '/repo')
+
+    $result.Count | Should Be 1
+    $result[0].Category | Should Be 'dev-tool'
+    $result[0].Killable | Should Be $true
+  }
+
+  It 'does not classify direct framework commands without dev or test markers' {
+    . $libraryPath
+
+    $processes = @(
+      [pscustomobject]@{
+        ProcessId = 121
+        ParentProcessId = 1
+        Name = 'next'
+        CommandLine = 'next telemetry disable --dir /repo'
+      }
+    )
+
+    $result = @(Get-TemporaryProcessClassifications -Processes $processes -Workspace '/repo')
+
+    $result.Count | Should Be 0
+  }
+
+  It 'classifies workspace-scoped cargo direct processes as temporary dev tools' {
+    . $libraryPath
+
+    $processes = @(
+      [pscustomobject]@{
+        ProcessId = 122
+        ParentProcessId = 1
+        Name = 'cargo'
+        CommandLine = 'cargo test --manifest-path /repo/Cargo.toml'
+      }
+    )
+
+    $result = @(Get-TemporaryProcessClassifications -Processes $processes -Workspace '/repo')
+
+    $result.Count | Should Be 1
+    $result[0].Category | Should Be 'dev-tool'
+    $result[0].Killable | Should Be $true
+  }
+
+  It 'classifies workspace-scoped uvicorn direct processes as temporary dev tools' {
+    . $libraryPath
+
+    $processes = @(
+      [pscustomobject]@{
+        ProcessId = 123
+        ParentProcessId = 1
+        Name = 'uvicorn'
+        CommandLine = 'uvicorn app.main:app --reload --app-dir /repo'
+      }
+    )
+
+    $result = @(Get-TemporaryProcessClassifications -Processes $processes -Workspace '/repo')
+
+    $result.Count | Should Be 1
+    $result[0].Category | Should Be 'dev-tool'
+    $result[0].Killable | Should Be $true
+  }
+
+  It 'classifies workspace-scoped gradle direct processes as temporary dev tools' {
+    . $libraryPath
+
+    $processes = @(
+      [pscustomobject]@{
+        ProcessId = 124
+        ParentProcessId = 1
+        Name = 'gradle'
+        CommandLine = 'gradle test --project-dir /repo'
+      }
+    )
+
+    $result = @(Get-TemporaryProcessClassifications -Processes $processes -Workspace '/repo')
+
+    $result.Count | Should Be 1
+    $result[0].Category | Should Be 'dev-tool'
+    $result[0].Killable | Should Be $true
+  }
+
+  It 'classifies workspace-scoped tauri direct processes as temporary dev tools' {
+    . $libraryPath
+
+    $processes = @(
+      [pscustomobject]@{
+        ProcessId = 125
+        ParentProcessId = 1
+        Name = 'tauri'
+        CommandLine = 'tauri dev --config /repo/src-tauri/tauri.conf.json'
+      }
+    )
+
+    $result = @(Get-TemporaryProcessClassifications -Processes $processes -Workspace '/repo')
+
+    $result.Count | Should Be 1
+    $result[0].Category | Should Be 'dev-tool'
+    $result[0].Killable | Should Be $true
+  }
+
+  It 'does not classify a browser just because a devtools page is open' {
+    . $libraryPath
+
+    $processes = @(
+      [pscustomobject]@{
+        ProcessId = 126
+        ParentProcessId = 1
+        Name = 'chrome'
+        CommandLine = '"C:\Program Files\Google\Chrome\Application\chrome.exe" devtools://devtools/bundled/inspector.html'
+      }
+    )
+
+    $result = @(Get-TemporaryProcessClassifications -Processes $processes)
+
+    $result.Count | Should Be 0
+  }
+
+  It 'classifies Google Chrome app bundle remote-debug processes as killable browser-debug sessions' {
+    . $libraryPath
+
+    $processes = @(
+      [pscustomobject]@{
+        ProcessId = 127
+        ParentProcessId = 1
+        Name = 'Google Chrome'
+        CommandLine = '/Applications/Google Chrome.app/Contents/MacOS/Google Chrome --remote-debugging-port=9222 --user-data-dir=/tmp/chrome-profile'
+      }
+    )
+
+    $result = @(Get-TemporaryProcessClassifications -Processes $processes)
+
+    $result.Count | Should Be 1
+    $result[0].Category | Should Be 'browser-debug'
+    $result[0].Killable | Should Be $true
+  }
+
+  It 'classifies google-chrome-stable remote-debug processes as killable browser-debug sessions' {
+    . $libraryPath
+
+    $processes = @(
+      [pscustomobject]@{
+        ProcessId = 128
+        ParentProcessId = 1
+        Name = 'google-chrome-stable'
+        CommandLine = '/usr/bin/google-chrome-stable --remote-debugging-port=9222 --user-data-dir=/tmp/chrome-profile'
+      }
+    )
+
+    $result = @(Get-TemporaryProcessClassifications -Processes $processes)
+
+    $result.Count | Should Be 1
+    $result[0].Category | Should Be 'browser-debug'
     $result[0].Killable | Should Be $true
   }
 

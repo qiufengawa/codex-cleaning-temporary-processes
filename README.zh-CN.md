@@ -108,19 +108,19 @@ Checkpoint 清理主要面向这些对象：
 Windows：
 
 ```powershell
-powershell -ExecutionPolicy Bypass -File "$env:USERPROFILE\.codex\skills\codex-cleaning-temporary-processes\scripts\cleanup-temporary-processes.ps1" -Mode inspect -Workspace "C:\Projects\ExampleApp"
+powershell -ExecutionPolicy Bypass -File "$env:CODEX_HOME\skills\codex-cleaning-temporary-processes\scripts\cleanup-temporary-processes.ps1" -Mode inspect -Workspace "C:\Projects\ExampleApp"
 ```
 
 macOS / Linux 使用 PowerShell：
 
 ```bash
-pwsh -NoProfile -File "$HOME/.codex/skills/codex-cleaning-temporary-processes/scripts/cleanup-temporary-processes.ps1" -Mode inspect -Workspace "/Users/example/project"
+pwsh -NoProfile -File "$CODEX_HOME/skills/codex-cleaning-temporary-processes/scripts/cleanup-temporary-processes.ps1" -Mode inspect -Workspace "/Users/example/project"
 ```
 
 macOS / Linux 使用 shell wrapper：
 
 ```bash
-bash "$HOME/.codex/skills/codex-cleaning-temporary-processes/scripts/cleanup-temporary-processes.sh" -Mode inspect -Workspace "/Users/example/project"
+bash "$CODEX_HOME/skills/codex-cleaning-temporary-processes/scripts/cleanup-temporary-processes.sh" -Mode inspect -Workspace "/Users/example/project"
 ```
 
 在高风险步骤结束后，把 `inspect` 换成 `checkpoint-cleanup`。只有在剩余临时进程树确定不再需要时，才使用 `cleanup`。

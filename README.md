@@ -38,6 +38,8 @@ The bundled rules are designed around mainstream developer workflows across mult
 
 The examples are representative, not exhaustive. The skill relies on command-line evidence, process-tree relationships, and workspace matching instead of hard-coding one project layout.
 
+For ordinary build, test, serve, and runtime processes, pass `-Workspace` whenever possible. Without workspace evidence, the implementation stays conservative and only treats explicit automation or remote-debug signatures as high-confidence cleanup targets.
+
 ## How It Works
 
 The skill uses a three-mode workflow:
@@ -108,19 +110,19 @@ Checkpoint cleanup is mainly for:
 Windows:
 
 ```powershell
-powershell -ExecutionPolicy Bypass -File "$env:USERPROFILE\.codex\skills\codex-cleaning-temporary-processes\scripts\cleanup-temporary-processes.ps1" -Mode inspect -Workspace "C:\Projects\ExampleApp"
+powershell -ExecutionPolicy Bypass -File "$env:CODEX_HOME\skills\codex-cleaning-temporary-processes\scripts\cleanup-temporary-processes.ps1" -Mode inspect -Workspace "C:\Projects\ExampleApp"
 ```
 
 macOS or Linux with PowerShell:
 
 ```bash
-pwsh -NoProfile -File "$HOME/.codex/skills/codex-cleaning-temporary-processes/scripts/cleanup-temporary-processes.ps1" -Mode inspect -Workspace "/Users/example/project"
+pwsh -NoProfile -File "$CODEX_HOME/skills/codex-cleaning-temporary-processes/scripts/cleanup-temporary-processes.ps1" -Mode inspect -Workspace "/Users/example/project"
 ```
 
 macOS or Linux with the shell wrapper:
 
 ```bash
-bash "$HOME/.codex/skills/codex-cleaning-temporary-processes/scripts/cleanup-temporary-processes.sh" -Mode inspect -Workspace "/Users/example/project"
+bash "$CODEX_HOME/skills/codex-cleaning-temporary-processes/scripts/cleanup-temporary-processes.sh" -Mode inspect -Workspace "/Users/example/project"
 ```
 
 Switch `inspect` to `checkpoint-cleanup` after a risky step finishes. Use `cleanup` only when the remaining temporary process trees are definitely no longer needed.

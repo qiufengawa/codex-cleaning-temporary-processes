@@ -6,8 +6,7 @@ $script:ProtectedShellNamePatterns = @(
 )
 $script:CmdShellNamePatterns = @("^cmd(\.exe)?$")
 $script:BrowserNamePatterns = @(
-  "^(chrome|msedge|chromium)(\.exe)?$",
-  "^(google-chrome|microsoft-edge)$"
+  "^(chrome|chromium|google chrome|google-chrome|google-chrome-stable|msedge|microsoft edge|microsoft-edge)(\.exe)?$"
 )
 $script:NodeNamePatterns = @("^node(\.exe)?$")
 $script:GenericRuntimeNamePatterns = @(
@@ -15,13 +14,25 @@ $script:GenericRuntimeNamePatterns = @(
   "^(uv|uvx|poetry|pipenv)(\.exe)?$",
   "^(dotnet|go|ruby|php|java|bun|deno|julia|swift|dart|flutter)(\.exe)?$"
 )
+$script:DirectToolNamePatterns = @(
+  "^(npm|npx|pnpm|pnpx|yarn)(\.cmd|\.exe)?$",
+  "^(vite|vitest|next|nuxt|astro|webpack|rollup|parcel|storybook|cypress|jest|turbo|nx|nest|remix|svelte-kit|tsx|ts-node|ts-node-dev|nodemon|vite-node)(\.cmd|\.exe)?$",
+  "^(cargo|tauri)(\.exe)?$",
+  "^(pytest|uvicorn|gunicorn|flask|django-admin)(\.exe)?$",
+  "^(gradle(w)?(\.bat)?|mvn(\.cmd)?)$",
+  "^(air|reflex)(\.exe)?$",
+  "^(bundle(\.bat)?|rails(\.exe)?|rspec(\.exe)?)$",
+  "^(composer(\.bat)?|artisan)$",
+  "^(mix|iex|rebar3)$",
+  "^(cmake|ctest|meson|ninja|make)$"
+)
 
 $script:BrowserAutomationPattern = "playwright|remote-debugging-port|--headless"
-$script:BrowserDebugPattern = "--remote-debugging-port|--headless|playwright|devtools"
+$script:BrowserDebugPattern = "--remote-debugging-port|--headless|playwright"
 $script:CodexParentNamePattern = "^Codex(\.exe)?$"
 
 $script:HighConfidenceShellPatterns = @(
-  "\b(vite|vitest|playwright|cargo|tauri|pytest|phpunit|rspec)\b",
+  "\bplaywright\b",
   "chrome-devtools-mcp",
   "remote-debugging-port"
 )
@@ -30,6 +41,7 @@ $script:WorkspaceScopedShellPatterns = @(
   "\b(npm|npx|pnpm|pnpx|yarn|bun|bunx)(\.cmd|\.exe)?\b.*\b(run|exec|dev|build|preview|test|start|serve|watch)\b",
   "\b(next|nuxt|astro|webpack|rollup|parcel|storybook|cypress|jest|turbo|nx|nest|remix|svelte-kit)\b",
   "\b(tsx|ts-node|ts-node-dev|nodemon|vite-node)\b.*\b(watch|dev|start|serve|run)\b",
+  "\bcargo(\.exe)?\b.*\b(test|run|check|build|tauri|clippy)\b",
   "\b(py(thon)?|uv|uvx|poetry|pipenv)(\.exe)?\b.*\b(pytest|uvicorn|gunicorn|flask|django|runserver|serve|watch|test|dev)\b",
   "\b(pytest|uvicorn|gunicorn)\b",
   "\bflask(\.exe)?\b.*\brun\b",
@@ -79,6 +91,25 @@ $script:WorkspaceScopedRuntimePatterns = @(
   "\b(swift|dart|flutter)\b.*\b(run|test|build|serve)\b",
   "\b(cmake|ctest|meson|ninja|make)\b.*\b(test|build|check|run)\b"
 )
+$script:WorkspaceScopedDirectToolPatterns = @(
+  "\bnpm(\.cmd)?\b.*\b(run|exec|dev|build|preview|test|start|serve|watch)\b",
+  "\b(npx|pnpm|pnpx|yarn|bun|bunx)(\.cmd|\.exe)?\b.*\b(run|exec|dev|build|preview|test|start|serve|watch)\b",
+  "\b(vite|vitest)\b(?:\s|$)",
+  "\b(next|nuxt|astro|webpack|rollup|parcel|storybook|cypress|jest|turbo|nx|nest|remix|svelte-kit)\b.*\b(dev|build|preview|test|start|serve|watch|run|open)\b",
+  "\b(tsx|ts-node|ts-node-dev|nodemon|vite-node)\b.*\b(watch|dev|start|serve|run)\b",
+  "\bcargo(\.exe)?\b.*\b(test|run|check|build|tauri|clippy)\b",
+  "\btauri(\.exe)?\b.*\b(dev|build|android|ios)\b",
+  "\b(pytest|uvicorn|gunicorn)\b",
+  "\bflask(\.exe)?\b.*\brun\b",
+  "\bdjango-admin(\.exe)?\b.*\brunserver\b",
+  "manage\.py\b.*\b(runserver|test)\b",
+  "\b(gradle(w)?(\.bat)?|mvn(\.cmd)?)\b.*\b(test|build|bootrun|spring-boot:run|quarkus:dev|dev|run|serve|package|install|verify)\b",
+  "\b(air|reflex)(\.exe)?\b",
+  "\b(bundle(\.bat)?|rails(\.exe)?|rspec(\.exe)?)\b.*\b(server|test|spec|dev)\b",
+  "\b(composer(\.bat)?|artisan)\b.*\b(serve|test)\b",
+  "\b(mix|iex|rebar3)\b.*\b(phx\.server|test|dev|serve|run)\b",
+  "\b(cmake|ctest|meson|ninja|make)\b.*\b(test|build|check|run)\b"
+)
 
 function New-ProcessRecord {
   param(
@@ -106,7 +137,22 @@ function Get-WorkspacePattern {
     return $null
   }
 
-  return [regex]::Escape($Workspace)
+  $trimmedWorkspace = $Workspace.Trim().TrimEnd('\', '/')
+  if ([string]::IsNullOrWhiteSpace($trimmedWorkspace)) {
+    return $null
+  }
+
+  $segments = @($trimmedWorkspace -split '[\\/]+' | Where-Object { -not [string]::IsNullOrWhiteSpace($_) })
+  if ($segments.Count -eq 0) {
+    return $null
+  }
+
+  $pathPattern = [string]::Join('[\\/]', @($segments | ForEach-Object { [regex]::Escape($_) }))
+  if ($trimmedWorkspace.StartsWith('\') -or $trimmedWorkspace.StartsWith('/')) {
+    $pathPattern = '[\\/]' + $pathPattern
+  }
+
+  return '(?i)(?<![A-Za-z0-9_.-])' + $pathPattern + '(?=$|[\\/''"\s])'
 }
 
 function Test-PatternList {
@@ -261,6 +307,14 @@ function Classify-TemporaryProcess {
 
     if ($commandLine -match $script:BrowserAutomationPattern) {
       return New-ProcessRecord -Process $Process -Category "browser-automation" -Killable:$true -Reason "Browser automation helper"
+    }
+
+    return $null
+  }
+
+  if (Test-NamePatternList -Value $name -Patterns $script:DirectToolNamePatterns) {
+    if ($workspaceMatch -and (Test-PatternList -Value $commandLine -Patterns $script:WorkspaceScopedDirectToolPatterns)) {
+      return New-ProcessRecord -Process $Process -Category "dev-tool" -Killable:$true -Reason "Workspace-owned developer tool process"
     }
 
     return $null

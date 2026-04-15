@@ -30,6 +30,21 @@ function ConvertFrom-WindowsProcess {
     -CommandLine ([string]$Process.CommandLine)
 }
 
+function Get-UnixProcessName {
+  param([string]$Value)
+
+  if ([string]::IsNullOrWhiteSpace($Value)) {
+    return $Value
+  }
+
+  $trimmed = $Value.Trim().Trim('"')
+  if ($trimmed -match '[\\/]') {
+    return [System.IO.Path]::GetFileName($trimmed)
+  }
+
+  return $trimmed
+}
+
 function ConvertFrom-UnixPsLine {
   param([string]$Line)
 
@@ -37,21 +52,38 @@ function ConvertFrom-UnixPsLine {
     return $null
   }
 
-  $match = [regex]::Match($Line, '^\s*(\d+)\s+(\d+)\s+(\S+)(?:\s+(.*))?$')
+  $match = [regex]::Match($Line, '^\s*(\d+)\s+(\d+)\s+(.*)$')
   if (-not $match.Success) {
     return $null
   }
 
   $processId = [int]$match.Groups[1].Value
   $parentProcessId = [int]$match.Groups[2].Value
-  $name = [string]$match.Groups[3].Value
-  $commandLine = [string]$match.Groups[4].Value
+  $name = Get-UnixProcessName -Value ([string]$match.Groups[3].Value)
 
-  return New-InventoryProcessRecord `
-    -ProcessId $processId `
-    -ParentProcessId $parentProcessId `
-    -Name $name `
-    -CommandLine $commandLine
+  [pscustomobject]@{
+    ProcessId       = $processId
+    ParentProcessId = $parentProcessId
+    Name            = $name
+  }
+}
+
+function ConvertFrom-UnixCommandLine {
+  param([string]$Line)
+
+  if ([string]::IsNullOrWhiteSpace($Line)) {
+    return $null
+  }
+
+  $match = [regex]::Match($Line, '^\s*(\d+)\s+(.*)$')
+  if (-not $match.Success) {
+    return $null
+  }
+
+  [pscustomobject]@{
+    ProcessId   = [int]$match.Groups[1].Value
+    CommandLine = [string]$match.Groups[2].Value
+  }
 }
 
 function Get-TemporaryProcessInventory {
@@ -60,12 +92,31 @@ function Get-TemporaryProcessInventory {
   }
 
   $psCommand = Get-Command ps -CommandType Application -ErrorAction Stop
-  $lines = & $psCommand.Source -axo 'pid=,ppid=,comm=,args='
+  $identityLines = & $psCommand.Source '-ww' '-axo' 'pid=,ppid=,comm='
+  $commandLines = & $psCommand.Source '-ww' '-axo' 'pid=,command='
 
-  $records = foreach ($line in $lines) {
-    $record = ConvertFrom-UnixPsLine -Line $line
-    if ($null -ne $record) {
-      $record
+  $commandLineById = @{}
+  foreach ($line in $commandLines) {
+    $commandRecord = ConvertFrom-UnixCommandLine -Line $line
+    if ($null -ne $commandRecord) {
+      $commandLineById[[int]$commandRecord.ProcessId] = [string]$commandRecord.CommandLine
+    }
+  }
+
+  $records = foreach ($line in $identityLines) {
+    $identityRecord = ConvertFrom-UnixPsLine -Line $line
+    if ($null -ne $identityRecord) {
+      $commandLine = if ($commandLineById.ContainsKey([int]$identityRecord.ProcessId)) {
+        $commandLineById[[int]$identityRecord.ProcessId]
+      } else {
+        [string]$identityRecord.Name
+      }
+
+      New-InventoryProcessRecord `
+        -ProcessId ([int]$identityRecord.ProcessId) `
+        -ParentProcessId ([int]$identityRecord.ParentProcessId) `
+        -Name ([string]$identityRecord.Name) `
+        -CommandLine $commandLine
     }
   }
 

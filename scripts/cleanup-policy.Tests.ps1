@@ -97,6 +97,44 @@ Describe 'Get-CleanupDecision' {
     $decision.Decision | Should Be 'inspect-only'
   }
 
+  It 'marks direct cargo test processes for cleanup during checkpoint cleanup' {
+    . $classificationLibraryPath
+    . $policyLibraryPath
+
+    $processes = @(
+      [pscustomobject]@{
+        ProcessId = 208
+        ParentProcessId = 1
+        Name = 'cargo'
+        CommandLine = 'cargo test --manifest-path /repo/Cargo.toml'
+      }
+    )
+
+    $record = @(Get-TemporaryProcessClassifications -Processes $processes -Workspace '/repo')[0]
+    $decision = Get-CleanupDecision -Record $record -Mode 'checkpoint-cleanup'
+
+    $decision.Decision | Should Be 'cleanup-now'
+  }
+
+  It 'keeps direct pnpm dev processes as inspect-only during checkpoint cleanup' {
+    . $classificationLibraryPath
+    . $policyLibraryPath
+
+    $processes = @(
+      [pscustomobject]@{
+        ProcessId = 209
+        ParentProcessId = 1
+        Name = 'pnpm'
+        CommandLine = 'pnpm dev --dir /repo'
+      }
+    )
+
+    $record = @(Get-TemporaryProcessClassifications -Processes $processes -Workspace '/repo')[0]
+    $decision = Get-CleanupDecision -Record $record -Mode 'checkpoint-cleanup'
+
+    $decision.Decision | Should Be 'inspect-only'
+  }
+
   It 'preserves protected shells during checkpoint cleanup' {
     . $classificationLibraryPath
     . $policyLibraryPath
