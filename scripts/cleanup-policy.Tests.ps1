@@ -2,7 +2,7 @@ $classificationLibraryPath = Join-Path $PSScriptRoot 'process-classification.ps1
 $policyLibraryPath = Join-Path $PSScriptRoot 'cleanup-policy.ps1'
 
 Describe 'Get-CleanupDecision' {
-  It 'marks DevTools MCP services for cleanup during checkpoint cleanup' {
+  It 'keeps unowned DevTools MCP services as inspect-only during checkpoint cleanup' {
     . $classificationLibraryPath
     . $policyLibraryPath
 
@@ -16,6 +16,31 @@ Describe 'Get-CleanupDecision' {
     )
 
     $record = @(Get-TemporaryProcessClassifications -Processes $processes)[0]
+    $decision = Get-CleanupDecision -Record $record -Mode 'checkpoint-cleanup'
+
+    $decision.Decision | Should Be 'inspect-only'
+  }
+
+  It 'marks task-owned DevTools MCP services for cleanup during checkpoint cleanup' {
+    . $classificationLibraryPath
+    . $policyLibraryPath
+
+    $processes = @(
+      [pscustomobject]@{
+        ProcessId = 250
+        ParentProcessId = 1
+        Name = 'cmd.exe'
+        CommandLine = 'cmd.exe /c pnpm test --dir C:\Repo'
+      }
+      [pscustomobject]@{
+        ProcessId = 251
+        ParentProcessId = 250
+        Name = 'node.exe'
+        CommandLine = 'node C:\Temp\npm-cache\_npx\pkg\chrome-devtools-mcp\build\src\bin\chrome-devtools-mcp.js'
+      }
+    )
+
+    $record = @(Get-TemporaryProcessClassifications -Processes $processes -Workspace 'C:\Repo' | Where-Object { $_.ProcessId -eq 251 })[0]
     $decision = Get-CleanupDecision -Record $record -Mode 'checkpoint-cleanup'
 
     $decision.Decision | Should Be 'cleanup-now'
@@ -59,7 +84,7 @@ Describe 'Get-CleanupDecision' {
     $decision.Decision | Should Be 'cleanup-now'
   }
 
-  It 'marks DevTools MCP launcher shells for cleanup during checkpoint cleanup' {
+  It 'keeps unowned DevTools MCP launcher shells as inspect-only during checkpoint cleanup' {
     . $classificationLibraryPath
     . $policyLibraryPath
 
@@ -73,6 +98,31 @@ Describe 'Get-CleanupDecision' {
     )
 
     $record = @(Get-TemporaryProcessClassifications -Processes $processes)[0]
+    $decision = Get-CleanupDecision -Record $record -Mode 'checkpoint-cleanup'
+
+    $decision.Decision | Should Be 'inspect-only'
+  }
+
+  It 'marks task-owned DevTools MCP launcher shells for cleanup during checkpoint cleanup' {
+    . $classificationLibraryPath
+    . $policyLibraryPath
+
+    $processes = @(
+      [pscustomobject]@{
+        ProcessId = 252
+        ParentProcessId = 1
+        Name = 'cmd.exe'
+        CommandLine = 'cmd.exe /c pnpm test --dir C:\Repo'
+      }
+      [pscustomobject]@{
+        ProcessId = 253
+        ParentProcessId = 252
+        Name = 'cmd.exe'
+        CommandLine = 'cmd.exe /d /s /c npx -y chrome-devtools-mcp@latest'
+      }
+    )
+
+    $record = @(Get-TemporaryProcessClassifications -Processes $processes -Workspace 'C:\Repo' | Where-Object { $_.ProcessId -eq 253 })[0]
     $decision = Get-CleanupDecision -Record $record -Mode 'checkpoint-cleanup'
 
     $decision.Decision | Should Be 'cleanup-now'
@@ -320,7 +370,7 @@ Describe 'Get-CleanupDecision' {
     $decision.Decision | Should Be 'preserve'
   }
 
-  It 'treats full cleanup mode as cleanup-now for any killable record' {
+  It 'keeps unowned browser-debug processes as inspect-only during full cleanup' {
     . $classificationLibraryPath
     . $policyLibraryPath
 
@@ -334,6 +384,25 @@ Describe 'Get-CleanupDecision' {
     )
 
     $record = @(Get-TemporaryProcessClassifications -Processes $processes)[0]
+    $decision = Get-CleanupDecision -Record $record -Mode 'cleanup'
+
+    $decision.Decision | Should Be 'inspect-only'
+  }
+
+  It 'treats full cleanup mode as cleanup-now for any task-owned killable record' {
+    . $classificationLibraryPath
+    . $policyLibraryPath
+
+    $processes = @(
+      [pscustomobject]@{
+        ProcessId = 254
+        ParentProcessId = 1
+        Name = 'msedge.exe'
+        CommandLine = '"C:\Program Files\Microsoft\Edge\Application\msedge.exe" --remote-debugging-port=9222 --user-data-dir=C:\Repo\.tmp\edge-profile'
+      }
+    )
+
+    $record = @(Get-TemporaryProcessClassifications -Processes $processes -Workspace 'C:\Repo')[0]
     $decision = Get-CleanupDecision -Record $record -Mode 'cleanup'
 
     $decision.Decision | Should Be 'cleanup-now'

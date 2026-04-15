@@ -52,7 +52,7 @@ Describe 'Get-TemporaryProcessClassifications' {
     $result.Count | Should Be 0
   }
 
-  It 'classifies DevTools MCP node processes without needing a workspace match' {
+  It 'classifies unowned DevTools MCP node processes as inspect-only candidates' {
     . $libraryPath
 
     $processes = @(
@@ -68,10 +68,35 @@ Describe 'Get-TemporaryProcessClassifications' {
 
     $result.Count | Should Be 1
     $result[0].Category | Should Be 'devtools-mcp'
+    $result[0].Killable | Should Be $false
+  }
+
+  It 'classifies task-owned DevTools MCP node processes as killable' {
+    . $libraryPath
+
+    $processes = @(
+      [pscustomobject]@{
+        ProcessId = 149
+        ParentProcessId = 1
+        Name = 'cmd.exe'
+        CommandLine = 'cmd.exe /c pnpm test --dir C:\Repo'
+      }
+      [pscustomobject]@{
+        ProcessId = 150
+        ParentProcessId = 149
+        Name = 'node.exe'
+        CommandLine = 'node C:\Temp\npm-cache\_npx\pkg\chrome-devtools-mcp\build\src\bin\chrome-devtools-mcp.js'
+      }
+    )
+
+    $result = @(Get-TemporaryProcessClassifications -Processes $processes -Workspace 'C:\Repo' | Where-Object { $_.ProcessId -eq 150 })
+
+    $result.Count | Should Be 1
+    $result[0].Category | Should Be 'devtools-mcp'
     $result[0].Killable | Should Be $true
   }
 
-  It 'classifies DevTools MCP watchdog processes with a specific watchdog category' {
+  It 'classifies unowned DevTools MCP watchdog processes as inspect-only candidates' {
     . $libraryPath
 
     $processes = @(
@@ -87,10 +112,41 @@ Describe 'Get-TemporaryProcessClassifications' {
 
     $result.Count | Should Be 1
     $result[0].Category | Should Be 'devtools-watchdog'
+    $result[0].Killable | Should Be $false
+  }
+
+  It 'classifies task-owned DevTools MCP watchdog processes as killable' {
+    . $libraryPath
+
+    $processes = @(
+      [pscustomobject]@{
+        ProcessId = 151
+        ParentProcessId = 1
+        Name = 'cmd.exe'
+        CommandLine = 'cmd.exe /c pnpm test --dir C:\Repo'
+      }
+      [pscustomobject]@{
+        ProcessId = 152
+        ParentProcessId = 151
+        Name = 'node.exe'
+        CommandLine = 'node C:\Temp\npm-cache\_npx\pkg\chrome-devtools-mcp\build\src\bin\chrome-devtools-mcp.js'
+      }
+      [pscustomobject]@{
+        ProcessId = 153
+        ParentProcessId = 152
+        Name = 'node.exe'
+        CommandLine = 'node C:\Temp\npm-cache\_npx\pkg\chrome-devtools-mcp\build\src\telemetry\watchdog\main.js --parent-pid=152'
+      }
+    )
+
+    $result = @(Get-TemporaryProcessClassifications -Processes $processes -Workspace 'C:\Repo' | Where-Object { $_.ProcessId -eq 153 })
+
+    $result.Count | Should Be 1
+    $result[0].Category | Should Be 'devtools-watchdog'
     $result[0].Killable | Should Be $true
   }
 
-  It 'classifies DevTools MCP npx launchers with a specific launcher category' {
+  It 'classifies unowned DevTools MCP npx launchers as inspect-only candidates' {
     . $libraryPath
 
     $processes = @(
@@ -106,7 +162,7 @@ Describe 'Get-TemporaryProcessClassifications' {
 
     $result.Count | Should Be 1
     $result[0].Category | Should Be 'devtools-launcher'
-    $result[0].Killable | Should Be $true
+    $result[0].Killable | Should Be $false
   }
 
   It 'classifies workspace-scoped pnpm dev shells as temporary tool shells' {
@@ -128,7 +184,32 @@ Describe 'Get-TemporaryProcessClassifications' {
     $result[0].Killable | Should Be $true
   }
 
-  It 'classifies DevTools MCP launcher shells without needing a workspace match' {
+  It 'classifies task-owned DevTools MCP npx launchers as killable' {
+    . $libraryPath
+
+    $processes = @(
+      [pscustomobject]@{
+        ProcessId = 154
+        ParentProcessId = 1
+        Name = 'cmd.exe'
+        CommandLine = 'cmd.exe /c pnpm test --dir C:\Repo'
+      }
+      [pscustomobject]@{
+        ProcessId = 155
+        ParentProcessId = 154
+        Name = 'node.exe'
+        CommandLine = '"C:\Program Files\nodejs\node.exe" "C:\Program Files\nodejs\node_modules\npm\bin\npx-cli.js" -y chrome-devtools-mcp@latest'
+      }
+    )
+
+    $result = @(Get-TemporaryProcessClassifications -Processes $processes -Workspace 'C:\Repo' | Where-Object { $_.ProcessId -eq 155 })
+
+    $result.Count | Should Be 1
+    $result[0].Category | Should Be 'devtools-launcher'
+    $result[0].Killable | Should Be $true
+  }
+
+  It 'classifies unowned DevTools MCP launcher shells as inspect-only candidates' {
     . $libraryPath
 
     $processes = @(
@@ -141,6 +222,31 @@ Describe 'Get-TemporaryProcessClassifications' {
     )
 
     $result = @(Get-TemporaryProcessClassifications -Processes $processes)
+
+    $result.Count | Should Be 1
+    $result[0].Category | Should Be 'tool-shell'
+    $result[0].Killable | Should Be $false
+  }
+
+  It 'classifies task-owned DevTools MCP launcher shells as killable' {
+    . $libraryPath
+
+    $processes = @(
+      [pscustomobject]@{
+        ProcessId = 156
+        ParentProcessId = 1
+        Name = 'cmd.exe'
+        CommandLine = 'cmd.exe /c pnpm test --dir C:\Repo'
+      }
+      [pscustomobject]@{
+        ProcessId = 157
+        ParentProcessId = 156
+        Name = 'cmd.exe'
+        CommandLine = 'cmd.exe /d /s /c npx -y chrome-devtools-mcp@latest'
+      }
+    )
+
+    $result = @(Get-TemporaryProcessClassifications -Processes $processes -Workspace 'C:\Repo' | Where-Object { $_.ProcessId -eq 157 })
 
     $result.Count | Should Be 1
     $result[0].Category | Should Be 'tool-shell'
@@ -695,7 +801,7 @@ Describe 'Get-TemporaryProcessClassifications' {
     $result.Count | Should Be 0
   }
 
-  It 'classifies Google Chrome app bundle remote-debug processes as killable browser-debug sessions' {
+  It 'classifies unowned Google Chrome app bundle remote-debug processes as inspect-only candidates' {
     . $libraryPath
 
     $processes = @(
@@ -711,10 +817,29 @@ Describe 'Get-TemporaryProcessClassifications' {
 
     $result.Count | Should Be 1
     $result[0].Category | Should Be 'browser-debug'
+    $result[0].Killable | Should Be $false
+  }
+
+  It 'classifies workspace-scoped Google Chrome app bundle remote-debug processes as killable browser-debug sessions' {
+    . $libraryPath
+
+    $processes = @(
+      [pscustomobject]@{
+        ProcessId = 129
+        ParentProcessId = 1
+        Name = 'Google Chrome'
+        CommandLine = '/Applications/Google Chrome.app/Contents/MacOS/Google Chrome --remote-debugging-port=9222 --user-data-dir=/repo/tmp/chrome-profile'
+      }
+    )
+
+    $result = @(Get-TemporaryProcessClassifications -Processes $processes -Workspace '/repo')
+
+    $result.Count | Should Be 1
+    $result[0].Category | Should Be 'browser-debug'
     $result[0].Killable | Should Be $true
   }
 
-  It 'classifies google-chrome-stable remote-debug processes as killable browser-debug sessions' {
+  It 'classifies unowned google-chrome-stable remote-debug processes as inspect-only candidates' {
     . $libraryPath
 
     $processes = @(
@@ -727,6 +852,25 @@ Describe 'Get-TemporaryProcessClassifications' {
     )
 
     $result = @(Get-TemporaryProcessClassifications -Processes $processes)
+
+    $result.Count | Should Be 1
+    $result[0].Category | Should Be 'browser-debug'
+    $result[0].Killable | Should Be $false
+  }
+
+  It 'classifies workspace-scoped google-chrome-stable remote-debug processes as killable browser-debug sessions' {
+    . $libraryPath
+
+    $processes = @(
+      [pscustomobject]@{
+        ProcessId = 130
+        ParentProcessId = 1
+        Name = 'google-chrome-stable'
+        CommandLine = '/usr/bin/google-chrome-stable --remote-debugging-port=9222 --user-data-dir=/repo/tmp/chrome-profile'
+      }
+    )
+
+    $result = @(Get-TemporaryProcessClassifications -Processes $processes -Workspace '/repo')
 
     $result.Count | Should Be 1
     $result[0].Category | Should Be 'browser-debug'
@@ -750,7 +894,7 @@ Describe 'Get-TemporaryProcessClassifications' {
     $result.Count | Should Be 0
   }
 
-  It 'classifies remote-debug browser processes as killable browser-debug sessions' {
+  It 'classifies unowned remote-debug browser processes as inspect-only candidates' {
     . $libraryPath
 
     $processes = @(
@@ -763,6 +907,25 @@ Describe 'Get-TemporaryProcessClassifications' {
     )
 
     $result = @(Get-TemporaryProcessClassifications -Processes $processes)
+
+    $result.Count | Should Be 1
+    $result[0].Category | Should Be 'browser-debug'
+    $result[0].Killable | Should Be $false
+  }
+
+  It 'classifies workspace-scoped remote-debug browser processes as killable browser-debug sessions' {
+    . $libraryPath
+
+    $processes = @(
+      [pscustomobject]@{
+        ProcessId = 131
+        ParentProcessId = 1
+        Name = 'msedge.exe'
+        CommandLine = '"C:\Program Files\Microsoft\Edge\Application\msedge.exe" --remote-debugging-port=9222 --user-data-dir=C:\Repo\.tmp\edge-profile'
+      }
+    )
+
+    $result = @(Get-TemporaryProcessClassifications -Processes $processes -Workspace 'C:\Repo')
 
     $result.Count | Should Be 1
     $result[0].Category | Should Be 'browser-debug'

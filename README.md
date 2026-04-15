@@ -59,6 +59,7 @@ The classification rules stay intentionally conservative when attributing a proc
 
 - Prefer passing `-Workspace` so command lines can be matched to the active repo or project path
 - Relative child commands can inherit task ownership only when a parent or ancestor already has both workspace evidence and known dev, test, build, serve, or watch markers
+- Explicit automation and remote-debug processes stay `inspect-only` unless current-workspace or current-task ownership evidence is strong enough
 - Codex-owned shell ancestry by itself is never enough to make descendants killable
 - If the evidence is weak or ambiguous, the process remains `inspect-only` or is ignored entirely
 
@@ -71,12 +72,23 @@ Use the skill in short cycles instead of waiting for the very end of a long task
 3. Re-run `inspect` to verify only the intended leftovers were reclaimed.
 4. Use `cleanup` only when the remaining temporary process trees are definitely no longer needed.
 
+## Trigger Cadence
+
+Treat invocation as step-scoped, not only task-scoped:
+
+- Re-evaluate the skill after each finished high-risk step, even while the larger task continues.
+- Re-evaluate after DevTools MCP, browser-debug, or Playwright-style work finishes.
+- Re-evaluate after a subagent finishes if it may have used shells, runtimes, browser helpers, tests, builds, or dev servers.
+- Re-evaluate after a batch of one-shot shell or tool commands when those processes no longer have reuse value.
+- If reuse is plausible, prefer `inspect`; if the step is clearly finished, use `checkpoint-cleanup`.
+
 ## Safety Model
 
 This skill is intentionally conservative.
 
 - It preserves the active Codex shell and Codex helper shells
 - It preserves ordinary browsers that do not carry automation or remote-debug flags
+- It preserves DevTools MCP, browser automation, and remote-debug sessions when current-task ownership is not proven
 - It preserves ambiguous processes when the evidence is not strong enough
 - It keeps likely reusable dev servers in `inspect-only` during checkpoint cleanup
 - It only cleans high-confidence temporary process trees that no longer provide value to the current step
@@ -88,11 +100,22 @@ Checkpoint cleanup is mainly for:
 - one-shot shells and runtimes tied to a finished step
 - wrapper shells that clearly launched automation helpers such as `chrome-devtools-mcp`, `playwright`, or `--remote-debugging-port`
 
+Incremental `checkpoint-cleanup` is for clearly finished steps. Final `cleanup` is the end-of-task sweep once the remaining temporary process trees are definitely no longer needed.
+
+## Multi-Project Safety
+
+When several Codex conversations, branches, or repositories are active at once, the skill should only clean processes that belong to the current task.
+
+- Workspace-backed dev, test, build, serve, and runtime processes must match the current workspace or a task-owned ancestor.
+- Explicit automation such as DevTools MCP, Playwright-style helpers, or remote-debug browsers stays `inspect-only` unless the current task can prove ownership.
+- Codex-owned ancestry by itself is not enough to let one project clean another project's process tree.
+
 ## What It Will Not Do
 
 - It will not kill the active Codex shell or Codex helper shells
 - It will not kill normal user browsers without automation flags
 - It will not kill unmatched runtimes just because they are `node`, `python`, `java`, or similar
+- It will not kill DevTools MCP, browser automation, or remote-debug sessions from another workspace or Codex conversation when current-task ownership is not established
 - It will not treat Codex-owned shell ancestry alone as proof that a descendant belongs to the current task
 - It will not force cleanup when evidence is weak; those processes stay in `inspect-only`
 - Direct browser-process matching currently targets Chromium and Edge-family remote-debug sessions; non-Chromium automation is mainly identified through helper or wrapper processes
@@ -133,6 +156,8 @@ The `processes` array in cleanup modes is re-inspected after kill attempts, so c
 - `scripts/*.Tests.ps1`: Pester coverage for inventory, classification, policy, and entrypoint behavior
 - `docs/project-introduction.md`: English project introduction
 - `docs/project-introduction.zh-CN.md`: Chinese project introduction
+- `docs/trigger-regression-scenarios.md`: English trigger timing scenarios
+- `docs/trigger-regression-scenarios.zh-CN.md`: Chinese trigger timing scenarios
 
 ## Installation
 
@@ -162,6 +187,20 @@ bash "$CODEX_HOME/skills/codex-cleaning-temporary-processes/scripts/cleanup-temp
 
 Switch `inspect` to `checkpoint-cleanup` after a risky step finishes. Use `cleanup` only when the remaining temporary process trees are definitely no longer needed.
 
+Example incremental cleanup after DevTools MCP, tests, or other finished one-shot steps:
+
+```powershell
+powershell -ExecutionPolicy Bypass -File "$env:CODEX_HOME\skills\codex-cleaning-temporary-processes\scripts\cleanup-temporary-processes.ps1" -Mode checkpoint-cleanup -Workspace "C:\Projects\ExampleApp"
+```
+
+## Troubleshooting
+
+- If process stacks keep growing, explicitly ask Codex to use `$codex-cleaning-temporary-processes`.
+- If a long task stays inside one assistant turn, ask for checkpoint cleanup between finished steps instead of waiting for the final answer.
+- If the next step may reuse a process, ask Codex to run `inspect` first rather than forcing cleanup.
+- If a process is preserved, that may be intentional because workspace evidence, automation flags, or other strong ownership signals were not present.
+- If several Codex conversations or projects are active at once, expect unowned DevTools or browser-debug leftovers to remain `inspect-only` until the current task can prove ownership.
+
 ## Testing
 
 Run the focused suites:
@@ -171,6 +210,7 @@ Invoke-Pester -Path .\scripts\process-inventory.Tests.ps1 -PassThru
 Invoke-Pester -Path .\scripts\process-classification.Tests.ps1 -PassThru
 Invoke-Pester -Path .\scripts\cleanup-policy.Tests.ps1 -PassThru
 Invoke-Pester -Path .\scripts\cleanup-temporary-processes.Tests.ps1 -PassThru
+Invoke-Pester -Path .\scripts\skill-trigger-contract.Tests.ps1 -PassThru
 ```
 
 Or run the full matrix in one shot:

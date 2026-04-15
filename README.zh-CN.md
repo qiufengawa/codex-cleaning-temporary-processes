@@ -59,6 +59,7 @@
 
 - 优先传入 `-Workspace`，让命令行可以和当前仓库或项目路径进行匹配
 - 相对路径启动的子进程，只有在父进程或祖先进程已经同时具备工作区证据以及明确的 dev、test、build、serve、watch 标记时，才会继承当前任务归属
+- 显式 automation 和远程调试进程，只有在当前工作区或当前任务归属证据足够强时才会进入可清理范围，否则保持 `inspect-only`
 - 仅仅因为进程链路挂在 Codex shell 下面，并不会自动变成可杀目标
 - 只要证据不够强或者存在歧义，就保持 `inspect-only`，甚至直接忽略
 
@@ -71,12 +72,23 @@
 3. 再跑一次 `inspect`，确认只回收了预期残留。
 4. 只有在剩余临时进程树明确不再需要时，才使用 `cleanup`。
 
+## 触发节奏
+
+把触发理解成“按步骤判断”，而不是“只在整项任务结束后判断”：
+
+- 让 Codex 在每个已经结束的高风险步骤之后重新判断是否要使用这个 skill，不要只等任务最终结束。
+- 在 DevTools MCP、浏览器远程调试或 Playwright 风格流程结束后重新判断。
+- 如果子代理在完成工作后，可能留下 shell、运行时、浏览器辅助进程、测试、构建或开发服务，也要重新判断。
+- 在一批一次性 shell 或工具命令执行完、且这些进程已经没有复用价值之后，也要重新判断。
+- 如果下一步可能复用这些进程，优先 `inspect`；如果该步骤已经明确结束，再使用 `checkpoint-cleanup`。
+
 ## 安全边界
 
 这个 skill 的策略是保守型的。
 
 - 会保留当前 Codex shell 和 Codex helper shell
 - 会保留没有自动化或远程调试标记的普通浏览器
+- 如果无法证明属于当前任务，也会保留 DevTools MCP、浏览器自动化和远程调试会话
 - 当证据不够强时，会保留进程而不是强行清理
 - 在 checkpoint 阶段，会把可能还要复用的开发服务保留为 `inspect-only`
 - 只有在高置信度且当前步骤已经不再需要时，才会清理对应进程树
@@ -88,11 +100,22 @@ Checkpoint 清理主要面向这些对象：
 - 明确属于刚结束步骤的一次性 shell 和运行时
 - 明确启动了 `chrome-devtools-mcp`、`playwright` 或 `--remote-debugging-port` 的 wrapper shell
 
+`checkpoint-cleanup` 是面向已结束步骤的增量清理；`cleanup` 是任务尾声使用的最终清扫。
+
+## 多项目安全
+
+当多个 Codex 对话、多个分支或多个仓库同时活跃时，这个 skill 默认只清理属于“当前任务”的进程。
+
+- 带工作区归属的 dev、test、build、serve、runtime 进程，必须匹配当前工作区或当前任务祖先进程。
+- DevTools MCP、Playwright 风格 helper、远程调试浏览器这类显式 automation，如果还不能证明属于当前任务，就保持 `inspect-only`。
+- 仅仅因为同属 Codex 进程链路，并不意味着一个项目可以清理另一个项目的进程树。
+
 ## 它不会做什么
 
 - 不会清理当前 Codex shell 或 Codex helper shell
 - 不会清理没有自动化标记的普通用户浏览器
 - 不会因为进程名叫 `node`、`python`、`java` 之类，就直接结束它
+- 如果还不能建立当前任务归属，也不会去清理其他工作区或其他 Codex 对话留下的 DevTools MCP、浏览器自动化或远程调试会话
 - 不会把“挂在 Codex shell 下面”本身当成当前任务归属的充分证据
 - 当证据不足时不会强行清理，而是保留在 `inspect-only`
 - 直接浏览器进程匹配当前主要覆盖 Chromium / Edge 家族的远程调试会话；非 Chromium 浏览器自动化更多依赖 helper 或 wrapper 进程来识别
@@ -133,6 +156,8 @@ Checkpoint 清理主要面向这些对象：
 - `scripts/*.Tests.ps1`：覆盖采集、分类、策略和入口行为的 Pester 测试
 - `docs/project-introduction.md`：英文项目介绍
 - `docs/project-introduction.zh-CN.md`：中文项目介绍
+- `docs/trigger-regression-scenarios.md`：英文触发时机场景
+- `docs/trigger-regression-scenarios.zh-CN.md`：中文触发时机场景
 
 ## 安装方式
 
@@ -162,6 +187,20 @@ bash "$CODEX_HOME/skills/codex-cleaning-temporary-processes/scripts/cleanup-temp
 
 当高风险步骤结束后，可以把 `inspect` 换成 `checkpoint-cleanup`。只有在剩余临时进程树明确不再需要时，才使用 `cleanup`。
 
+例如，在 DevTools MCP、测试或其他一次性步骤结束后，可以这样做增量清理：
+
+```powershell
+powershell -ExecutionPolicy Bypass -File "$env:CODEX_HOME\skills\codex-cleaning-temporary-processes\scripts\cleanup-temporary-processes.ps1" -Mode checkpoint-cleanup -Workspace "C:\Projects\ExampleApp"
+```
+
+## 故障排查
+
+- 如果进程还在持续堆积，请显式要求 Codex 使用 `$codex-cleaning-temporary-processes`。
+- 如果一个长任务始终停留在同一个 assistant 回合里，应该在已结束的步骤之间请求 checkpoint cleanup，而不是只等最终回答。
+- 如果下一步可能还要复用某个进程，先让 Codex 跑 `inspect`，不要直接强制清理。
+- 如果某个进程没有被清理，可能是因为缺少工作区证据、自动化标记或其他高置信度归属信号，这通常是有意保守保留下来的结果。
+- 如果同时有多个 Codex 对话或多个项目在运行，无法证明属于当前任务的 DevTools 或浏览器调试残留会继续保持 `inspect-only`，这是为了避免跨项目误杀。
+
 ## 测试
 
 可以分别运行这些测试：
@@ -171,6 +210,7 @@ Invoke-Pester -Path .\scripts\process-inventory.Tests.ps1 -PassThru
 Invoke-Pester -Path .\scripts\process-classification.Tests.ps1 -PassThru
 Invoke-Pester -Path .\scripts\cleanup-policy.Tests.ps1 -PassThru
 Invoke-Pester -Path .\scripts\cleanup-temporary-processes.Tests.ps1 -PassThru
+Invoke-Pester -Path .\scripts\skill-trigger-contract.Tests.ps1 -PassThru
 ```
 
 也可以直接跑完整矩阵：

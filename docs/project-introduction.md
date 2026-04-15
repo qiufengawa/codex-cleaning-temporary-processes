@@ -2,7 +2,7 @@
 
 Codex Cleaning Temporary Processes is a cross-platform Codex skill for safe process hygiene during development work.
 
-It is designed for sessions where shells, test runners, build tools, browser-debug helpers, DevTools MCP services, and workspace runtimes may leave behind temporary processes. Instead of waiting until the very end of a long task, the skill supports checkpoint cleanup after a risky step finishes, which keeps process buildup under control without broadly killing everything that looks developer-related.
+It is designed for sessions where shells, test runners, build tools, browser-debug helpers, DevTools MCP services, subagent-owned tooling, and workspace runtimes may leave behind temporary processes. Instead of waiting until the very end of a long task, the skill supports checkpoint cleanup after a finished risky step, which keeps process buildup under control without broadly killing everything that looks developer-related.
 
 The project targets mainstream development workflows across Windows, macOS, and Linux. Its rules are built around command-line evidence, process-tree relationships, and workspace matching so it can support frontend, backend, automation, mobile, and systems-oriented toolchains without being tied to one project layout.
 
@@ -10,9 +10,12 @@ The operating model stays conservative:
 
 - inspect first when evidence is weak
 - clean only high-confidence leftovers during checkpoint cleanup
-- allow conservative ownership inheritance only from workspace-backed task ancestors with known dev or test markers
+- allow conservative ownership inheritance only from workspace-backed task ancestors with known dev, test, build, serve, or watch markers
+- keep explicit automation inspect-only when current-workspace or current-task ownership is not yet proven
 - preserve active Codex shells, ordinary user apps, and likely reusable dev services
 - reserve the final sweep for temporary process trees that are definitely no longer needed
+
+The intended cadence is incremental: re-evaluate after each finished high-risk step, after DevTools MCP or browser-debug work, after repeated one-shot shell or tool commands, and after subagents that may have launched shells, runtimes, or browsers.
 
 Cleanup modes re-inspect the process table after kill attempts and report both what was reclaimed and what failed to stop, so downstream callers can see the real post-cleanup state instead of a stale pre-cleanup snapshot.
 

@@ -1,6 +1,6 @@
 ---
 name: codex-cleaning-temporary-processes
-description: Use when work on Windows, macOS, or Linux may spawn temporary shells, package-manager commands, language runtimes, browser-debug sessions, DevTools MCP helpers, dev servers, test runners, build watchers, or subagent-owned tooling that should be inspected and cleaned without touching the active Codex shell or unrelated user apps.
+description: Use when tool-heavy work on Windows, macOS, or Linux may leave stacked temporary shells, package-manager commands, language runtimes, browser-debug sessions, DevTools MCP helpers, dev servers, test runners, build watchers, or subagent-owned tooling that should be inspected and cleaned at checkpoints without touching the active Codex shell or unrelated user apps.
 ---
 
 # Codex Cleaning Temporary Processes
@@ -19,13 +19,20 @@ Do not wait for the entire task to finish if a long task contains multiple risky
 
 ## Trigger Checklist
 
-Run this skill automatically when any of these happened in the current turn:
+Re-evaluate this skill after every relevant tool call, DevTools or browser-debug step, and subagent result. Invoke it as soon as any item below becomes true, even mid-turn during a long tool-heavy session.
 
-- Ran package-manager, dev-server, test-runner, watcher, or build commands such as `npm`, `pnpm`, `yarn`, `bun`, `vite`, `vitest`, `tsx`, `nodemon`, `cargo`, `tauri`, `pytest`, `uvicorn`, `dotnet`, `go test`, `rails`, `php artisan`, `gradle`, `mvn`, `mix`, `swift`, `dart`, `cmake`, or similar tooling
-- Opened browser automation, DevTools MCP, remote debugging, headless Chrome or Edge, or Playwright-style workflows
-- Spawned or waited on subagents that may have used browser or dev tooling
-- Executed repeated shell commands and may have left helper shells behind
+- Finished build, test, serve, watch, package-manager, install, preview, or one-shot runtime commands such as `npm`, `pnpm`, `yarn`, `bun`, `vite`, `vitest`, `tsx`, `nodemon`, `cargo`, `tauri`, `pytest`, `uvicorn`, `dotnet`, `go test`, `rails`, `php artisan`, `gradle`, `mvn`, `mix`, `swift`, `dart`, `cmake`, or similar tooling
+- Used any `mcp__chrome_devtools__*` tool, `chrome-devtools-mcp`, browser automation, remote debugging, headless Chrome or Edge, or Playwright-style workflows
+- A subagent finished or reported results after using shells, builds, tests, browser tooling, dev servers, or runtimes that may have left temporary helpers behind
+- Completed a batch of one-shot shell or tool commands and those helpers or runtimes no longer have reuse value
 - The user mentioned memory pressure, many background runtime processes, lingering shells, or unexpected browser-debug processes
+
+## Trigger Cadence
+
+- Re-evaluate after each finished high-risk step, even while the overall task continues.
+- Re-evaluate after a subagent finishes if its shells, runtimes, or browser helpers no longer have reuse value.
+- Re-evaluate after a batch of one-shot shell or tool commands instead of waiting for final task end.
+- You may invoke this skill multiple times in the same task. After one cleanup pass, trigger it again if later steps create new temporary processes.
 
 ## Safety Model
 
@@ -39,7 +46,8 @@ Require strong evidence before cleanup:
 - explicit automation or remote-debug flags
 - clear DevTools MCP markers
 - current-workspace match plus dev, test, build, preview, serve, run, or watch markers
-- for relative child commands, a parent or ancestor that already has both workspace evidence and known dev or test markers
+- for relative child commands, a parent or ancestor that already has both workspace evidence and known dev, test, build, serve, or watch markers
+- if multiple Codex tasks or workspaces may be active, explicit automation also needs current-task ownership evidence; otherwise keep it `inspect-only`
 
 If only one weak signal is present, inspect and report instead of killing.
 
@@ -55,6 +63,7 @@ Never kill:
 - plain interactive `powershell`, `pwsh`, `bash`, `zsh`, `sh`, or `fish` with no task-specific arguments
 - normal user browsers without automation or remote-debug flags
 - user-owned runtimes such as Node, Python, Java, Ruby, PHP, Go, or .NET when they do not match current task work
+- DevTools MCP, browser automation, or remote-debug browser sessions that lack current-workspace or current-task ownership evidence
 - descendants that only trace back to Codex shell ancestry without real workspace-backed task evidence
 - anything you are not highly confident is temporary
 
@@ -82,7 +91,9 @@ This skill is meant for mainstream development workflows across multiple ecosyst
 
 ## Cleanup Timing
 
-- run `checkpoint-cleanup` after each high-risk step such as tests, builds, DevTools MCP, browser automation, or one-shot tool invocations
+- run `checkpoint-cleanup` after each finished high-risk step such as tests, builds, DevTools MCP, browser automation, or one-shot tool invocations
+- run `checkpoint-cleanup` after a subagent finishes if its spawned tooling no longer has reuse value
+- run `checkpoint-cleanup` after a batch of one-shot shell or tool commands when those helpers are no longer needed
 - use `inspect` first if the next step may reuse a process and you are not yet confident
 - use full `cleanup` only when ending the task or intentionally shutting down all remaining temporary process trees
 
@@ -91,6 +102,7 @@ This skill is meant for mainstream development workflows across multiple ecosyst
 - the Codex session shell and Codex helper shells
 - ordinary browsers opened for normal user activity
 - standalone runtimes with no current-workspace match
+- explicit automation from another workspace or Codex conversation when current-task ownership is not proven
 - interactive shells with no task-specific command markers
 - anything still producing output for the active task
 
@@ -101,7 +113,7 @@ This skill is meant for mainstream development workflows across multiple ecosyst
 - launchers with `npx-cli.js -y chrome-devtools-mcp@latest`
 - wrapper shells whose command lines explicitly include `chrome-devtools-mcp`, `playwright`, or `--remote-debugging-port`
 - temporary shells or runtime processes that clearly show dev, build, preview, test, serve, runserver, or watch modes for the current workspace
-- relative child processes only when a parent or ancestor is already workspace-backed and matches known dev, test, build, or serve markers
+- relative child processes only when a parent or ancestor is already workspace-backed and matches known dev, test, build, serve, or watch markers
 - browser processes only when command lines clearly include automation flags such as `--remote-debugging-port`, `--headless`, or `playwright`
 - direct browser-process matching currently targets Chromium and Edge-family browser names; non-Chromium automation is mainly surfaced through helper or wrapper processes
 
@@ -155,6 +167,7 @@ Pass `-Workspace` whenever a repo path helps distinguish current task-owned shel
 | After frontend, backend, mobile, or systems tooling that launched a one-shot command | Run `checkpoint-cleanup` after the step if those processes are no longer needed |
 | After Python, JVM, .NET, Go, Ruby, PHP, Elixir, Swift, Dart, or Node backend tooling | Inspect with `-Workspace`, then use `checkpoint-cleanup` only for non-reusable leftovers |
 | After DevTools MCP or browser-debug workflows | Use `checkpoint-cleanup` promptly to reclaim high-confidence MCP, watchdog, launcher, and automation trees |
+| Multiple Codex conversations or workspaces are active | Preserve explicit automation without current-task ownership evidence and clean only records tied to the current workspace or task-owned ancestors |
 | User reports many runtime or shell processes | Inspect matching shell, runtime, and browser-debug processes first |
 | Only the Codex session shell or reusable dev servers remain | Stop and preserve them |
 
@@ -164,6 +177,7 @@ Pass `-Workspace` whenever a repo path helps distinguish current task-owned shel
 - Killing plain interactive shells that belong to the active Codex session
 - Killing every tool wrapper shell instead of limiting checkpoint cleanup to one-shot commands or explicit automation wrappers
 - Killing normal browsers without remote-debug or headless flags
+- Letting one project or Codex conversation clean another project's explicit automation without current-task ownership evidence
 - Treating Codex-owned ancestry alone as sufficient proof that a relative child process belongs to the current task
 - Cleaning before test or build output is finished
 - Waiting until the whole task ends even though several finished tool steps already left dead temporary processes behind

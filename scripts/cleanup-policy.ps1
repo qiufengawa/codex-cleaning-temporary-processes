@@ -83,7 +83,23 @@ function Get-CleanupDecision {
     }
   }
 
+  $explicitAutomationWithoutOwnership = (
+    (
+      $Record.Category -in $script:CheckpointCleanupCategories
+    ) -or (
+      $Record.Category -eq "tool-shell" -and
+      (Test-CleanupPolicyPatternList -Value $Record.CommandLine -Patterns $script:CheckpointAutomationShellMarkers)
+    )
+  ) -and (-not $Record.Killable)
+
   if (-not $Record.Killable) {
+    if ($explicitAutomationWithoutOwnership) {
+      return [pscustomobject]@{
+        Decision = "inspect-only"
+        Reason   = "Explicit automation lacks current-task ownership evidence"
+      }
+    }
+
     return [pscustomobject]@{
       Decision = "preserve"
       Reason   = "Protected process class"

@@ -297,15 +297,45 @@ function Test-TemporaryShellCommandLine {
     return $false
   }
 
+  return ($WorkspaceMatch -or $TaskOwnedAncestor) -and (Test-PatternList -Value $CommandLine -Patterns $script:WorkspaceScopedShellPatterns)
+}
+
+function Test-ExplicitAutomationShellCommandLine {
+  param([string]$CommandLine)
+
+  if ([string]::IsNullOrWhiteSpace($CommandLine)) {
+    return $false
+  }
+
   if ($CommandLine -match "chrome-devtools-mcp|remote-debugging-port") {
     return $true
   }
 
-  if (Test-PatternList -Value $CommandLine -Patterns $script:HighConfidenceShellPatterns) {
-    return $true
+  return Test-PatternList -Value $CommandLine -Patterns $script:HighConfidenceShellPatterns
+}
+
+function Test-TaskOwnershipEvidence {
+  param(
+    [bool]$WorkspaceMatch,
+    [bool]$TaskOwnedAncestor
+  )
+
+  return $WorkspaceMatch -or $TaskOwnedAncestor
+}
+
+function New-ExplicitAutomationRecord {
+  param(
+    [object]$Process,
+    [string]$Category,
+    [bool]$TaskOwned,
+    [string]$OwnedReason
+  )
+
+  if ($TaskOwned) {
+    return New-ProcessRecord -Process $Process -Category $Category -Killable:$true -Reason $OwnedReason
   }
 
-  return ($WorkspaceMatch -or $TaskOwnedAncestor) -and (Test-PatternList -Value $CommandLine -Patterns $script:WorkspaceScopedShellPatterns)
+  return New-ProcessRecord -Process $Process -Category $Category -Killable:$false -Reason "Explicit automation without current-task ownership evidence"
 }
 
 function Classify-TemporaryProcess {
@@ -321,6 +351,7 @@ function Classify-TemporaryProcess {
   $parentName = Get-ParentProcessName -ParentProcessId ([int]$Process.ParentProcessId) -ProcessById $ProcessById
   $workspaceMatch = Test-WorkspaceMatch -CommandLine $commandLine -WorkspacePattern $WorkspacePattern
   $taskOwnedAncestor = Test-TaskOwnedAncestor -ParentProcessId ([int]$Process.ParentProcessId) -ProcessById $ProcessById -WorkspacePattern $WorkspacePattern
+  $taskOwned = Test-TaskOwnershipEvidence -WorkspaceMatch $workspaceMatch -TaskOwnedAncestor $taskOwnedAncestor
 
   if ([int]$Process.ProcessId -eq $CurrentProcessId) {
     return $null
@@ -335,6 +366,10 @@ function Classify-TemporaryProcess {
       return New-ProcessRecord -Process $Process -Category "protected-shell" -Killable:$false -Reason "Codex harness helper shell"
     }
 
+    if ((Test-ExplicitAutomationShellCommandLine -CommandLine $commandLine) -and $commandLine -notmatch "ConvertFrom-Json") {
+      return New-ExplicitAutomationRecord -Process $Process -Category "tool-shell" -TaskOwned $taskOwned -OwnedReason "Task-owned shell for explicit automation work"
+    }
+
     if (
       (Test-TemporaryShellCommandLine -CommandLine $commandLine -WorkspaceMatch $workspaceMatch -TaskOwnedAncestor $taskOwnedAncestor) -and
       $commandLine -notmatch "ConvertFrom-Json"
@@ -346,6 +381,10 @@ function Classify-TemporaryProcess {
   }
 
   if (Test-NamePatternList -Value $name -Patterns $script:CmdShellNamePatterns) {
+    if (Test-ExplicitAutomationShellCommandLine -CommandLine $commandLine) {
+      return New-ExplicitAutomationRecord -Process $Process -Category "tool-shell" -TaskOwned $taskOwned -OwnedReason "Task-owned shell for explicit automation work"
+    }
+
     if (Test-TemporaryShellCommandLine -CommandLine $commandLine -WorkspaceMatch $workspaceMatch -TaskOwnedAncestor $taskOwnedAncestor) {
       return New-ProcessRecord -Process $Process -Category "tool-shell" -Killable:$true -Reason "Task-owned shell for temporary tool work"
     }
@@ -355,30 +394,30 @@ function Classify-TemporaryProcess {
 
   if (Test-NamePatternList -Value $name -Patterns $script:NodeNamePatterns) {
     if ($commandLine -match "telemetry\\watchdog\\main\.js") {
-      return New-ProcessRecord -Process $Process -Category "devtools-watchdog" -Killable:$true -Reason "DevTools MCP watchdog"
+      return New-ExplicitAutomationRecord -Process $Process -Category "devtools-watchdog" -TaskOwned $taskOwned -OwnedReason "Current-task DevTools MCP watchdog"
     }
 
     if ($commandLine -match "npx-cli\.js.*chrome-devtools-mcp@latest") {
-      return New-ProcessRecord -Process $Process -Category "devtools-launcher" -Killable:$true -Reason "DevTools MCP launcher"
+      return New-ExplicitAutomationRecord -Process $Process -Category "devtools-launcher" -TaskOwned $taskOwned -OwnedReason "Current-task DevTools MCP launcher"
     }
 
     if ($commandLine -match "chrome-devtools-mcp") {
-      return New-ProcessRecord -Process $Process -Category "devtools-mcp" -Killable:$true -Reason "DevTools MCP service"
+      return New-ExplicitAutomationRecord -Process $Process -Category "devtools-mcp" -TaskOwned $taskOwned -OwnedReason "Current-task DevTools MCP service"
     }
 
-    if (($workspaceMatch -or $taskOwnedAncestor) -and (Test-PatternList -Value $commandLine -Patterns $script:WorkspaceScopedNodePatterns)) {
+    if ($taskOwned -and (Test-PatternList -Value $commandLine -Patterns $script:WorkspaceScopedNodePatterns)) {
       return New-ProcessRecord -Process $Process -Category "dev-tool" -Killable:$true -Reason "Current-task JavaScript dev process"
     }
 
     if ($commandLine -match $script:BrowserAutomationPattern) {
-      return New-ProcessRecord -Process $Process -Category "browser-automation" -Killable:$true -Reason "Browser automation helper"
+      return New-ExplicitAutomationRecord -Process $Process -Category "browser-automation" -TaskOwned $taskOwned -OwnedReason "Current-task browser automation helper"
     }
 
     return $null
   }
 
   if (Test-NamePatternList -Value $name -Patterns $script:DirectToolNamePatterns) {
-    if (($workspaceMatch -or $taskOwnedAncestor) -and (Test-PatternList -Value $commandLine -Patterns $script:WorkspaceScopedDirectToolPatterns)) {
+    if ($taskOwned -and (Test-PatternList -Value $commandLine -Patterns $script:WorkspaceScopedDirectToolPatterns)) {
       return New-ProcessRecord -Process $Process -Category "dev-tool" -Killable:$true -Reason "Current-task developer tool process"
     }
 
@@ -386,7 +425,7 @@ function Classify-TemporaryProcess {
   }
 
   if (Test-NamePatternList -Value $name -Patterns $script:GenericRuntimeNamePatterns) {
-    if (($workspaceMatch -or $taskOwnedAncestor) -and (Test-PatternList -Value $commandLine -Patterns $script:WorkspaceScopedRuntimePatterns)) {
+    if ($taskOwned -and (Test-PatternList -Value $commandLine -Patterns $script:WorkspaceScopedRuntimePatterns)) {
       return New-ProcessRecord -Process $Process -Category "dev-tool" -Killable:$true -Reason "Current-task dev or test runtime"
     }
 
@@ -395,7 +434,7 @@ function Classify-TemporaryProcess {
 
   if (Test-NamePatternList -Value $name -Patterns $script:BrowserNamePatterns) {
     if ($commandLine -match $script:BrowserDebugPattern) {
-      return New-ProcessRecord -Process $Process -Category "browser-debug" -Killable:$true -Reason "Browser automation or remote-debug session"
+      return New-ExplicitAutomationRecord -Process $Process -Category "browser-debug" -TaskOwned $taskOwned -OwnedReason "Current-task browser automation or remote-debug session"
     }
 
     return $null
