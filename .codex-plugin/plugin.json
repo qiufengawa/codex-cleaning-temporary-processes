@@ -1,0 +1,26 @@
+{
+  "name": "codex-cleaning-temporary-processes",
+  "version": "0.8.0",
+  "description": "Automatic checkpoint cleanup for temporary development processes across Codex tool workflows.",
+  "license": "MIT",
+  "keywords": [
+    "codex",
+    "cleanup",
+    "process-hygiene",
+    "hooks",
+    "automation"
+  ],
+  "skills": "./",
+  "hooks": "./hooks.json",
+  "interface": {
+    "displayName": "Codex Cleanup Trigger",
+    "shortDescription": "Automatic checkpoint cleanup for temporary dev processes",
+    "longDescription": "Adds strong-trigger hooks that re-evaluate the bundled cleanup skill after risky tool, subagent, and session-end checkpoints while preserving existing workspace and thread safety rules.",
+    "developerName": "Open Source",
+    "category": "Coding",
+    "capabilities": [
+      "Interactive",
+      "Read"
+    ]
+  }
+}

@@ -2,196 +2,129 @@
 
 [English](./README.md)
 
-这是一个面向 Windows、macOS 和 Linux 的跨平台 Codex skill，用来在工具驱动的开发工作后安全地检查和清理临时开发进程，同时避免误伤当前 Codex shell、普通用户应用和证据不足的长期服务。
+Codex Cleaning Temporary Processes 是一个公开的跨平台包，用于在 Windows、macOS 和 Linux 上安全清理临时开发进程。
 
-## 概述
+## 公开包模型
 
-长时间开发会话里，shell、测试进程、构建辅助进程、浏览器调试进程以及工作区运行时，常常会在某个步骤结束后继续残留在后台。这个 skill 的目标，就是给 Codex 一套可重复的流程，让它识别这些残留，并且只回收那些已经明确完成使命、不会再被复用的临时进程。
+这个仓库支持两种面向用户的安装方式：
 
-这是一个公开、通用的 skill，不绑定某一个项目、不绑定某一种技术栈，也不绑定某一种操作系统。
+- 插件式安装：保持仓库根目录完整，包含 `.codex-plugin/plugin.json`、`hooks.json` 和 `hooks/`。这是启用自动强触发的安装即运行路径。
+- skill 式安装：将仓库放到 `CODEX_HOME/skills/codex-cleaning-temporary-processes` 下，可以看到 `SKILL.md`、`agents/openai.yaml` 和脚本，但不会自动启用插件 hook 行为。
 
-## 支持环境
+已安装的插件包负责自动检查点，独立的 [`SKILL.md`](./SKILL.md) 继续作为手动兜底入口。自动触发改变的是 Codex 何时重新检查清理，而不是它被允许清理什么。
 
-- Windows
-- macOS
-- Linux
+## 自动强触发
 
-实现上使用统一的 PowerShell 主入口，并为 macOS / Linux 提供 shell wrapper。
+当包以插件式安装启用时，它应当在固定检查点自动重新评估清理，例如：
+
+- 每个已结束的高风险工具步骤之后
+- DevTools MCP、浏览器自动化或远程调试步骤结束之后
+- 一批一次性 helper 已完成且不再有复用价值之后
+- 子代理结束之后
+- 会话结束时的最终清扫
+
+这种固定检查点模型是刻意设计的。自动路径不应该依赖“等任务快结束时再想起清理”，而应该在明确结束的检查点发生后尽快处理，避免进程堆积。
+
+## 手动兜底
+
+当包只以 skill 式安装存在，或者插件 hook 不可用时，`SKILL.md` 就是手动兜底指南。
+
+手动路径适合用来：
+
+- 让 Codex 显式运行 `inspect`、`checkpoint-cleanup` 或 `cleanup`
+- 解释为什么某个进程被判定为 `cleanup-now`、`inspect-only` 或 `preserve`
+- 在清理前先做一次显式审查
+
+手动路径仍然应该遵循同样的固定检查点。如果几个高风险步骤已经结束，就不要等整个任务结束后才检查残留。
+
+## 触发节奏
+
+把清理理解为按检查点触发：
+
+- 每个已结束的高风险步骤之后重新评估
+- DevTools MCP 或浏览器调试检查点结束之后重新评估
+- 子代理结果返回且其工具链不再需要时重新评估
+- 一批一次性命令完成、需要做积压缓解时重新评估
+- 会话结束时重新评估最终清扫
+
+当步骤已经明确结束时，优先使用 `checkpoint-cleanup`；如果下一步仍可能复用进程，则先用 `inspect`。
+
+## 安全模型
+
+这个包刻意保持保守。
+
+- 保留当前 Codex shell 和 Codex helper shell
+- 保留没有自动化或远程调试标记的普通浏览器
+- 当归属证据不足时保留存在歧义的 runtime
+- 在 checkpoint 清理阶段保留可能仍可复用的开发服务
+- 只清理对当前检查点已经没有价值的高置信度临时进程树
+
+显式自动化有额外保护：
+
+- 必须有当前任务链路证据或当前线程拥有的显式自动化证据
+- 仅有工作区匹配仍然不够
+- `Codex.exe app-server` 祖先进程只能让显式自动化进入可记录范围，不能直接变成可清理
+- `-ConfirmCurrentThreadExplicitAutomation` 只适用于第一次后续确认，而且必须显式确认同一线程刚刚真的使用过该自动化，并且工作区非空
+- 当前线程拥有权不会放宽普通 runtime 的清理范围
+
+## 多项目隔离
+
+当多个项目或多个 Codex 对话同时活跃时，这个包也必须保持安全。
+
+- 带工作区归属的 build、test、serve、watch 和 runtime 进程，必须匹配当前工作区或当前任务祖先进程
+- 其他工作区或其他 Codex 对话留下的显式自动化，除非能证明当前任务链路归属或当前线程确认归属，否则保持 `inspect-only`
+- 当前线程拥有权只是同一对话、同一工作区下显式自动化的兜底恢复信号
+- 不能因为存在同线程自动化声明，就把普通 runtime 直接提升为可清理对象
+
+## 清理与本地状态
+
+同线程显式自动化恢复会在本地运行时状态里使用经过清理的线程标识和规范化的工作区值。
+
+- 优先写入 `CODEX_HOME/state/codex-cleaning-temporary-processes/...`
+- 如果没有 `CODEX_HOME`，则退回到操作系统临时目录
+- 这些本地状态只是运行期辅助数据，不会成为放宽清理权限的理由
+
+## 跨平台打包内容
+
+这个公开包包含：
+
+- [`SKILL.md`](./SKILL.md)：手动兜底指南
+- [`agents/openai.yaml`](./agents/openai.yaml)：安装时元数据和默认自动提示
+- `.codex-plugin/plugin.json`、`hooks.json` 和 `hooks/`：插件式自动检查点
+- 用于盘点、分类、策略、账本和清理的 PowerShell 脚本
+- macOS / Linux 的 shell wrapper
+- 英文主文档和中文配套文档
+- 用于触发、分类、策略和入口行为的 Pester 测试
+
+这个包从设计上就是跨平台的：
+
+- Windows 直接使用 PowerShell
+- macOS 和 Linux 可以使用 `pwsh`
+- macOS 和 Linux 也可以使用提供的 `bash` wrapper
 
 ## 运行要求
 
 - Windows：默认自带 PowerShell
-- macOS / Linux：需要安装 PowerShell 7，并保证 `pwsh` 可用
-- 如果你的检出环境不会保留可执行位，可以直接通过 `bash` 调用 Unix wrapper
-- 如果要对 DevTools MCP、浏览器自动化或远程调试残留启用“当前线程后续回收”，需要 Codex 在 shell 环境里暴露 `CODEX_THREAD_ID`，并且在第一次后续确认时同时传入非空的 `-Workspace` 和 `-ConfirmCurrentThreadExplicitAutomation`。这一步只用于当前线程明确确认“刚刚结束的这个步骤确实使用过这类显式 automation”，随后同工作区的后续检查才可能继续回收这些残留。空白工作区不是通配符。如果没有这个线程 id，显式 automation 会退回到只依赖当前任务链路归属，而普通开发工具仍然依赖工作区和祖先进程证据
-
-## 生态覆盖
-
-当前规则面向主流开发工作流，覆盖多个常见生态，包括：
-
-- JavaScript / TypeScript 工具链，例如 `npm`、`pnpm`、`yarn`、`bun`、`vite`、`vitest`、`next`、`nuxt`、`astro`、`webpack`、`storybook`
-- Node 后端和服务端工具，例如 `tsx`、`ts-node`、`ts-node-dev`、`nodemon`、`nest`、`remix`、`svelte-kit`
-- Rust 工具链，例如 `cargo`、`cargo test`、`cargo tauri dev`
-- Python 工具链，例如 `pytest`、`uvicorn`、`gunicorn`、`flask`、Django `runserver`
-- JVM 和 .NET 工具链，例如 `java`、`gradle`、`mvn`、`dotnet`
-- Go、Ruby、PHP、Elixir、Swift、Dart、Flutter 以及常见原生构建工具，只要命令证据和工作区证据足够强
-- DevTools MCP、Playwright 风格自动化以及远程调试浏览器会话
-
-这些例子只是代表性覆盖，不是穷举。这个 skill 依赖的是命令行证据、进程树关系和工作区匹配，而不是只针对某一种项目结构。
-
-对于普通的 build、test、serve、run 这类流程，建议尽量传入 `-Workspace`。如果没有工作区证据，脚本会保持保守，只把显式自动化和远程调试标记视为高置信度目标。
-
-## 工作方式
-
-这个 skill 使用三种模式：
-
-- `inspect`：输出已分类的临时目标以及能被明确识别出来的受保护类型，只看不杀
-- `checkpoint-cleanup`：在高风险步骤结束后，只回收高置信度残留
-- `cleanup`：在任务真正结束时，对仍然可清理的临时进程树做最终清扫
-
-底层实现分成两层判断：
-
-- 进程分类层负责回答“这是什么类型的进程”
-- 清理策略层负责回答“当前模式下它该保留、仅检查，还是立即清理”
-
-## 归属判断信号
-
-这个 skill 在判断一个进程是否属于“当前任务”时，策略是刻意保守的。
-
-- 优先传入 `-Workspace`，让命令行可以和当前仓库或项目路径进行匹配
-- 相对路径启动的子进程，只有在父进程或祖先进程已经同时具备工作区证据以及明确的 dev、test、build、serve、watch 标记时，才会继承当前任务归属
-- 显式 automation 和远程调试进程，只有在当前任务链路归属明确，或当前线程已证明归属时才会进入可清理范围；仅有工作区匹配还不够，否则保持 `inspect-only`
-- 只有当这个 Codex 线程在刚结束的步骤里确实使用过显式 automation 时，才应该加上 `-ConfirmCurrentThreadExplicitAutomation`
-- 这个开关必须和非空 `-Workspace` 一起使用；第一次确认会把该工作区下的当前线程显式 automation 记入本地账本，后续同工作区检查才可能继续回收这些残留
-- 当前线程归属不会单独把普通 runtime 或普通开发工具放宽成可清理目标
-- `codex.exe app-server` 这类祖先进程只能让显式 automation 进入“可记账候选”的范围，不能单独变成立即可清理许可
-- 空白 `-Workspace` 永远不是通配符，也不能触发当前线程记账或后续提权
-- 仅仅因为进程链路挂在 Codex shell 下面，并不会自动变成可杀目标
-- 只要证据不够强或者存在歧义，就保持 `inspect-only`，甚至直接忽略
-
-## 显式 automation 确认
-
-如果刚结束的步骤确实在这个 Codex 线程里使用了 DevTools MCP、Playwright 风格自动化或远程调试浏览器，可以在第一次后续检查时显式确认这一点：
-
-```powershell
-powershell -ExecutionPolicy Bypass -File "$env:CODEX_HOME\skills\codex-cleaning-temporary-processes\scripts\cleanup-temporary-processes.ps1" -Mode inspect -Workspace "C:\Projects\ExampleApp" -ConfirmCurrentThreadExplicitAutomation
-```
-
-这个确认只用于显式 automation，不会放宽普通开发工具的清理范围。
-
-- 每次都要配合 `-Workspace` 使用；空白 `-Workspace` 不代表“任何工作区”
-- 第一次确认只负责记账；之后同工作区的后续检查，才可能继续回收 launcher 已退出的显式 automation 残留
-- 不要把这个开关用于猜测、其他对话、其他工作区，或仅仅因为某个进程挂在 `Codex.exe app-server` 下面
-
-## 推荐使用策略
-
-不要等到一个超长任务完全结束后再统一清理，更安全的方式是按短周期执行：
-
-1. 当归属还不明确时，先跑 `inspect`。
-2. 每完成一次高风险步骤，例如测试、构建、一次性脚本、浏览器自动化或 DevTools MCP 后，跑一次 `checkpoint-cleanup`。
-3. 再跑一次 `inspect`，确认只回收了预期残留。
-4. 只有在剩余临时进程树明确不再需要时，才使用 `cleanup`。
-
-## 触发节奏
-
-把触发理解成“按步骤判断”，而不是“只在整项任务结束后判断”：
-
-- 让 Codex 在每个已经结束的高风险步骤之后重新判断是否要使用这个 skill，不要只等任务最终结束。
-- 在 DevTools MCP、浏览器远程调试或 Playwright 风格流程结束后重新判断。
-- 如果子代理在完成工作后，可能留下 shell、运行时、浏览器辅助进程、测试、构建或开发服务，也要重新判断。
-- 在一批一次性 shell 或工具命令执行完、且这些进程已经没有复用价值之后，也要重新判断。
-- 如果下一步可能复用这些进程，优先 `inspect`；如果该步骤已经明确结束，再使用 `checkpoint-cleanup`。
-
-## 安全边界
-
-这个 skill 的策略是保守型的。
-
-- 会保留当前 Codex shell 和 Codex helper shell
-- 会保留没有自动化或远程调试标记的普通浏览器
-- 如果无法证明属于当前任务，也会保留 DevTools MCP、浏览器自动化和远程调试会话
-- 只有在同一个 Codex 对话已经用 `-ConfirmCurrentThreadExplicitAutomation` 和同工作区明确确认过归属，或者当前任务链路本身已经能证明归属时，后续步骤才可能继续回收显式 automation
-- 当证据不够强时，会保留进程而不是强行清理
-- 在 checkpoint 阶段，会把可能还要复用的开发服务保留为 `inspect-only`
-- 只有在高置信度且当前步骤已经不再需要时，才会清理对应进程树
-
-Checkpoint 清理主要面向这些对象：
-
-- DevTools MCP 服务、launcher 和 watchdog
-- 明确带有浏览器自动化或远程调试标记的会话
-- 明确属于刚结束步骤的一次性 shell 和运行时
-- 明确启动了 `chrome-devtools-mcp`、`playwright` 或 `--remote-debugging-port` 的 wrapper shell
-
-`checkpoint-cleanup` 是面向已结束步骤的增量清理；`cleanup` 是任务尾声使用的最终清扫。
-
-## 多项目安全
-
-当多个 Codex 对话、多个分支或多个仓库同时活跃时，这个 skill 默认只清理属于“当前任务”的进程。
-
-- 带工作区归属的 dev、test、build、serve、runtime 进程，必须匹配当前工作区或当前任务祖先进程。
-- DevTools MCP、Playwright 风格 helper、远程调试浏览器这类显式 automation，如果还不能证明属于当前任务，就保持 `inspect-only`。
-- 当前线程归属只用于“同一个 Codex 对话已经用 `-ConfirmCurrentThreadExplicitAutomation` 和同工作区明确确认过归属”的显式 automation 兜底；仅有同工作区匹配并不代表可以宽泛清理所有对象，空白工作区也不会匹配所有对象。
-- 仅仅因为同属 Codex 进程链路，并不意味着一个项目可以清理另一个项目的进程树。
-
-## 它不会做什么
-
-- 不会清理当前 Codex shell 或 Codex helper shell
-- 不会清理没有自动化标记的普通用户浏览器
-- 不会因为进程名叫 `node`、`python`、`java` 之类，就直接结束它
-- 如果还不能建立当前任务链路归属，也不会去清理其他工作区或其他 Codex 对话留下的 DevTools MCP、浏览器自动化或远程调试会话
-- 不会只因为“当前线程归属”存在，就去结束普通的 dev、test、build 或 runtime 进程
-- 不会把空白 `-Workspace` 当成当前线程确认或后续提权的通配符
-- 不会把 `codex.exe app-server` 祖先进程本身当成当前任务归属或立即清理的充分证据
-- 不会把“挂在 Codex shell 下面”本身当成当前任务归属的充分证据
-- 当证据不足时不会强行清理，而是保留在 `inspect-only`
-- 直接浏览器进程匹配当前主要覆盖 Chromium / Edge 家族的远程调试会话；非 Chromium 浏览器自动化更多依赖 helper 或 wrapper 进程来识别
-
-## 输出结构
-
-`inspect` 返回当前分类快照：
-
-- `matchedCount`
-- `killableRoots`
-- `decisionCounts`
-- `processes`
-
-`checkpoint-cleanup` 和 `cleanup` 会返回清理后的重新检查结果，以及 kill 统计：
-
-- `matchedCount`
-- `killableRoots`
-- `decisionCounts`
-- `killedCount`
-- `killedIds`
-- `failedCount`
-- `failedIds`
-- `processes`
-
-其中 cleanup 模式下的 `processes` 是 kill 尝试之后重新检查得到的结果，因此调用方看到的是“现在还剩什么”，而不是“清理前看到了什么”。
-
-`inspect` 返回的是“已分类记录”，不是完整进程表转储。对于证据不足或未命中的对象，脚本可能会选择保留并且不在输出里展示。
-
-## 仓库结构
-
-- `SKILL.md`：公开 skill 说明和操作规则
-- `agents/openai.yaml`：默认 agent 元数据和调用提示
-- `scripts/process-inventory.ps1`：跨平台进程采集
-- `scripts/process-classification.ps1`：进程分类规则
-- `scripts/cleanup-policy.ps1`：清理决策策略
-- `scripts/cleanup-temporary-processes.ps1`：统一的检查与清理入口
-- `scripts/thread-ownership-ledger.ps1`：用于显式 automation 回收的本地“当前线程归属账本”
-- `scripts/cleanup-temporary-processes.sh`：macOS / Linux shell wrapper
-- `scripts/*.Tests.ps1`：覆盖采集、分类、策略和入口行为的 Pester 测试
-- `docs/project-introduction.md`：英文项目介绍
-- `docs/project-introduction.zh-CN.md`：中文项目介绍
-- `docs/trigger-regression-scenarios.md`：英文触发时机场景
-- `docs/trigger-regression-scenarios.zh-CN.md`：中文触发时机场景
-
-当前线程归属状态属于本地运行时数据，不会包含在公开包里。启用时，默认写到 `$CODEX_HOME/state/codex-cleaning-temporary-processes/thread-ownership/`。只有当 `CODEX_THREAD_ID` 可用、并且你传入了非空 `-Workspace` 时，这层优化才会参与；空白工作区不是通配符。如果 `CODEX_THREAD_ID` 不可用，显式 automation 会退回到当前任务链路归属，而普通开发工具仍然依赖工作区和祖先进程证据。
+- macOS / Linux：安装 PowerShell 7 并保证 `pwsh` 可用
+- 如果你的检出环境不保留可执行位，可以通过 `bash` 调用 Unix wrapper
 
 ## 安装方式
 
-1. 将这个仓库克隆或复制到你的 Codex skills 目录。
-2. 放到 `$CODEX_HOME/skills/codex-cleaning-temporary-processes`，或你本机对应的 Codex skill 路径下。
-3. 仓库目录名建议与 skill 名保持一致：`codex-cleaning-temporary-processes`。
+### 插件式安装
+
+当你需要自动强触发时，使用这个模式。
+
+1. 保持仓库根目录完整，确保 `.codex-plugin/plugin.json`、`hooks.json`、`hooks/`、`agents/openai.yaml` 和 `scripts/` 一起存在。
+2. 通过你的 Codex 插件流程安装或启用这个包。
+3. 确认当前环境支持插件 hook，这样固定检查点才能自动运行。
+
+### skill 式安装
+
+当你只需要手动 skill 文本和脚本时，使用这个模式。
+
+1. 把包放到 `CODEX_HOME/skills/codex-cleaning-temporary-processes`。
+2. 使用独立的 `SKILL.md` 指南，或者直接调用脚本。
+3. 不要期待 skill 式安装本身带来自动 hook 行为。
 
 ## 使用方式
 
@@ -213,31 +146,22 @@ macOS / Linux 使用 shell wrapper：
 bash "$CODEX_HOME/skills/codex-cleaning-temporary-processes/scripts/cleanup-temporary-processes.sh" -Mode inspect -Workspace "/Users/example/project"
 ```
 
-当高风险步骤结束后，可以把 `inspect` 换成 `checkpoint-cleanup`。只有在剩余临时进程树明确不再需要时，才使用 `cleanup`。
-
-如果刚结束的步骤确实在当前线程里使用了 DevTools MCP、Playwright 风格自动化或远程调试浏览器，那么第一次后续检查要同时带上 `-ConfirmCurrentThreadExplicitAutomation` 和工作区。第一次确认只负责记账；后续同工作区检查才可能继续回收这些残留。
-
-例如，在某个 DevTools MCP 步骤结束后，可以这样做后续清理：
-
-```powershell
-powershell -ExecutionPolicy Bypass -File "$env:CODEX_HOME\skills\codex-cleaning-temporary-processes\scripts\cleanup-temporary-processes.ps1" -Mode inspect -Workspace "C:\Projects\ExampleApp" -ConfirmCurrentThreadExplicitAutomation
-powershell -ExecutionPolicy Bypass -File "$env:CODEX_HOME\skills\codex-cleaning-temporary-processes\scripts\cleanup-temporary-processes.ps1" -Mode checkpoint-cleanup -Workspace "C:\Projects\ExampleApp"
-```
+如果某个已结束的检查点确实在当前线程里使用过 DevTools MCP、Playwright 风格自动化或远程调试浏览器，就在第一次后续检查时同时加上 `-ConfirmCurrentThreadExplicitAutomation` 和工作区。第一次确认负责记录同线程归属；后续同工作区检查才可能继续回收 launcher 退出后的残留。
 
 ## 故障排查
 
-- 如果进程还在持续堆积，请显式要求 Codex 使用 `$codex-cleaning-temporary-processes`。
-- 如果一个长任务始终停留在同一个 assistant 回合里，应该在已结束的步骤之间请求 checkpoint cleanup，而不是只等最终回答。
-- 如果下一步可能还要复用某个进程，先让 Codex 跑 `inspect`，不要直接强制清理。
-- 如果某个进程没有被清理，可能是因为缺少工作区证据、自动化标记或其他高置信度归属信号，这通常是有意保守保留下来的结果。
-- 如果某些已经脱离 launcher 的 DevTools 或浏览器调试辅助进程本来就属于当前这个 Codex 对话，只有在当前线程明确确认“刚结束的步骤确实使用过它们”时，才应加上 `-ConfirmCurrentThreadExplicitAutomation`；而且必须同时传入正确的工作区。
-- 如果 `-Workspace` 为空、缺失或指向了别的仓库，那么当前线程确认不会记账，也不会把这些显式 automation 提升为可清理对象。
-- 如果某个进程只是碰巧挂在 `Codex.exe app-server` 下面，这仍然不代表它一定属于当前任务；要么当前任务链路还活着，要么当前线程必须明确确认真实的显式 automation 使用。
-- 如果同时有多个 Codex 对话或多个项目在运行，无法证明属于当前任务的 DevTools 或浏览器调试残留会继续保持 `inspect-only`，这是为了避免跨项目误杀。
+- 如果这个包只以 skill 式安装存在，请显式要求 Codex 使用 `$codex-cleaning-temporary-processes`。
+- 如果自动 hook 不可用，请检查插件式安装文件是否齐全：`.codex-plugin/plugin.json`、`hooks.json` 和 `hooks/`。
+- 如果进程栈仍在增长，请检查某个已结束的高风险步骤或子代理结果之后，是否漏掉了固定检查点。
+- 如果下一步可能复用某个进程，先让 Codex 跑 `inspect`，而不是强制清理。
+- 如果某个进程被保留，这通常意味着工作区证据、自动化标记或其他强归属信号还不够。
+- 如果 `-Workspace` 为空、缺失或指向别的仓库，同线程确认就不会记账，也不会提升这些对象。
+- 如果某个进程只是在 `Codex.exe app-server` 下面，也仍然不足以清理它。
+- 如果多个项目同时活跃，无法证明归属的 DevTools 或浏览器调试残留会继续保持 `inspect-only`。
 
 ## 测试
 
-可以分别运行这些测试：
+运行重点测试：
 
 ```powershell
 Invoke-Pester -Path .\scripts\process-inventory.Tests.ps1 -PassThru
@@ -247,12 +171,12 @@ Invoke-Pester -Path .\scripts\cleanup-temporary-processes.Tests.ps1 -PassThru
 Invoke-Pester -Path .\scripts\skill-trigger-contract.Tests.ps1 -PassThru
 ```
 
-也可以直接跑完整矩阵：
+或者直接跑完整矩阵：
 
 ```powershell
 Invoke-Pester -Path .\scripts -PassThru
 ```
 
-## 协议
+## 许可证
 
-本项目采用 [MIT License](./LICENSE)。
+本项目使用 [MIT License](./LICENSE)。

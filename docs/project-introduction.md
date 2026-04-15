@@ -1,26 +1,27 @@
 # Project Introduction
 
-Codex Cleaning Temporary Processes is a cross-platform Codex skill for safe process hygiene during development work.
+Codex Cleaning Temporary Processes is a public, cross-platform package for safe cleanup of temporary development processes.
 
-It is designed for sessions where shells, test runners, build tools, browser-debug helpers, DevTools MCP services, subagent-owned tooling, and workspace runtimes may leave behind temporary processes. Instead of waiting until the very end of a long task, the skill supports checkpoint cleanup after a finished risky step, which keeps process buildup under control without broadly killing everything that looks developer-related.
+The package supports two installation modes:
 
-The project targets mainstream development workflows across Windows, macOS, and Linux. Its rules are built around command-line evidence, process-tree relationships, and workspace matching so it can support frontend, backend, automation, mobile, and systems-oriented toolchains without being tied to one project layout.
+- plugin-style installation keeps `.codex-plugin/plugin.json`, `hooks.json`, and `hooks/` at the repo root and enables automatic strong triggering
+- skill-style installation under `CODEX_HOME/skills` exposes the skill text and scripts but does not activate automatic hook behavior on its own
 
-The operating model stays conservative:
+That split is user-facing and intentional. The installed plugin package handles automatic fixed checkpoints, while `SKILL.md` remains the manual fallback guide.
+
+The fixed-checkpoint model is deliberate. Instead of waiting for Codex to remember cleanup when the task ends, the package re-evaluates after concrete finished checkpoints such as a high-risk tool step, a DevTools or browser-debug checkpoint, a subagent completion, a one-shot helper backlog, or session end.
+
+The safety model stays narrow:
 
 - inspect first when evidence is weak
 - clean only high-confidence leftovers during checkpoint cleanup
-- allow conservative ownership inheritance only from workspace-backed task ancestors with known dev, test, build, serve, or watch markers
-- keep explicit automation inspect-only when current-task lineage or current-thread ownership is not yet proven; workspace match alone is not enough
-- let the same Codex conversation record current-thread ownership only on a first follow-up pass that explicitly confirms real explicit-automation use with `-ConfirmCurrentThreadExplicitAutomation` and a non-blank workspace, then reclaim that automation on later same-workspace passes without broadening cleanup for generic runtimes
-- treat Codex `app-server` ancestry as a recording hint for explicit automation, not as immediate cleanup permission
-- preserve active Codex shells, ordinary user apps, and likely reusable dev services
-- reserve the final sweep for temporary process trees that are definitely no longer needed
+- require current-task lineage or confirmed current-thread ownership for explicit automation
+- never treat workspace match alone as enough for explicit automation
+- never let current-thread ownership broaden cleanup for generic runtimes
+- preserve active Codex shells, ordinary user apps, ambiguous runtimes, and likely reusable dev services
 
-The intended cadence is incremental: re-evaluate after each finished high-risk step, after DevTools MCP or browser-debug work, after repeated one-shot shell or tool commands, and after subagents that may have launched shells, runtimes, or browsers.
+The package also keeps multi-project isolation explicit. Workspace-backed runtime cleanup must still match the current workspace or a task-owned ancestor, and explicit automation from another conversation or repository remains `inspect-only` unless ownership is proven.
 
-Cleanup modes re-inspect the process table after kill attempts and report both what was reclaimed and what failed to stop, so downstream callers can see the real post-cleanup state instead of a stale pre-cleanup snapshot.
+For same-thread explicit automation recovery, local runtime state uses sanitized thread identifiers and normalized workspace values. That local state supports safe lookup and filename handling, but it does not widen cleanup authority.
 
-The `inspect` view is intentionally narrower than a full process dump: it reports classified records, while weak-signal or unmatched processes may be preserved without being listed. Direct browser-process matching currently focuses on Chromium and Edge-family remote-debug sessions; non-Chromium automation is primarily identified through explicit helper or wrapper processes.
-
-This repository includes the skill definition, agent metadata, PowerShell scripts, a shell wrapper, and Pester tests needed to reuse or adapt the skill in other Codex environments.
+This repository includes the public docs, metadata, plugin manifest, hook definitions, PowerShell scripts, shell wrapper, and tests needed to package the behavior for Windows, macOS, and Linux.
