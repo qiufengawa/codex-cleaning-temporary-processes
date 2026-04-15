@@ -12,7 +12,8 @@ Codex Cleaning Temporary Processes 是一个跨平台 Codex skill，用来在开
 - checkpoint 阶段只清理高置信度残留
 - 只有当父进程或祖先进程已经具备工作区证据和明确的 dev / test / build / serve / watch 标记时，才允许保守地继承当前任务归属
 - 对于显式 automation，如果还不能证明属于当前任务链路归属，或者当前线程已经证明归属，就保持 inspect-only；仅有工作区匹配还不够
-- 对于同一个 Codex 对话已经证明过归属的显式 automation，后续步骤仍然可以通过当前线程归属继续回收，而不会因此放宽普通 runtime 的清理范围
+- 对于同一个 Codex 对话，在第一次确认某个 Codex 自有显式 automation 时可以先 seed 当前线程归属，后续步骤仍然可以通过当前线程归属继续回收，而不会因此放宽普通 runtime 的清理范围
+- `codex.exe app-server` 这类祖先进程只用来帮助显式 automation 进入可记账范围，不单独构成立即清理许可
 - 保留当前 Codex shell、普通用户应用和可能仍需复用的开发服务
 - 只有在剩余临时进程树明确不再需要时，才做最终清扫
 

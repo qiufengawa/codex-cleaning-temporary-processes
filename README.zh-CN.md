@@ -23,7 +23,7 @@
 - Windows：默认自带 PowerShell
 - macOS / Linux：需要安装 PowerShell 7，并保证 `pwsh` 可用
 - 如果你的检出环境不会保留可执行位，可以直接通过 `bash` 调用 Unix wrapper
-- 如果 Codex 能在 shell 环境里暴露 `CODEX_THREAD_ID`，当前线程显式 automation 回收会更可靠；如果没有这个线程 id，显式 automation 会退回到只依赖当前任务链路归属，而普通开发工具仍然依赖工作区和祖先进程证据
+- 如果 Codex 能在 shell 环境里暴露 `CODEX_THREAD_ID`，并且你传入了 `-Workspace`，当前线程对显式 automation 的回收会更可靠；当第一次确认某个 Codex 自有的显式 automation 归属时，当前线程可以先把它 seed 到归属账本，后续步骤再决定是否回收。如果没有这个线程 id，显式 automation 会退回到只依赖当前任务链路归属，而普通开发工具仍然依赖工作区和祖先进程证据
 
 ## 生态覆盖
 
@@ -61,8 +61,9 @@
 - 优先传入 `-Workspace`，让命令行可以和当前仓库或项目路径进行匹配
 - 相对路径启动的子进程，只有在父进程或祖先进程已经同时具备工作区证据以及明确的 dev、test、build、serve、watch 标记时，才会继承当前任务归属
 - 显式 automation 和远程调试进程，只有在当前任务链路归属明确，或当前线程已证明归属时才会进入可清理范围；仅有工作区匹配还不够，否则保持 `inspect-only`
-- 本地的“当前线程归属账本”可以让同一个 Codex 对话在先前已经证明归属之后，继续回收自己的显式 automation，即使原始 launcher shell 之后已经退出
+- 本地的“当前线程归属账本”可以在第一次确认某个 Codex 自有显式 automation 时先记账，后续步骤继续回收自己的显式 automation，即使原始 launcher shell 之后已经退出
 - 当前线程归属不会单独把普通 runtime 或普通开发工具放宽成可清理目标
+- `codex.exe app-server` 这类祖先进程只能让显式 automation 进入“可记账”的范围，不能单独变成立即可清理许可
 - 仅仅因为进程链路挂在 Codex shell 下面，并不会自动变成可杀目标
 - 只要证据不够强或者存在歧义，就保持 `inspect-only`，甚至直接忽略
 
@@ -92,7 +93,7 @@
 - 会保留当前 Codex shell 和 Codex helper shell
 - 会保留没有自动化或远程调试标记的普通浏览器
 - 如果无法证明属于当前任务，也会保留 DevTools MCP、浏览器自动化和远程调试会话
-- 对于同一个 Codex 对话先前已经证明归属的显式 automation，后续步骤仍然可以通过当前线程归属继续回收
+- 对于同一个 Codex 对话已经 seed 或证明归属的显式 automation，后续步骤仍然可以通过当前线程归属继续回收
 - 当证据不够强时，会保留进程而不是强行清理
 - 在 checkpoint 阶段，会把可能还要复用的开发服务保留为 `inspect-only`
 - 只有在高置信度且当前步骤已经不再需要时，才会清理对应进程树
@@ -112,7 +113,7 @@ Checkpoint 清理主要面向这些对象：
 
 - 带工作区归属的 dev、test、build、serve、runtime 进程，必须匹配当前工作区或当前任务祖先进程。
 - DevTools MCP、Playwright 风格 helper、远程调试浏览器这类显式 automation，如果还不能证明属于当前任务，就保持 `inspect-only`。
-- 当前线程归属只用于“同一个 Codex 对话已经证明归属”的显式 automation 兜底；仅有同工作区匹配并不代表可以宽泛清理所有对象。
+- 当前线程归属只用于“同一个 Codex 对话已经 seed 或证明归属”的显式 automation 兜底；仅有同工作区匹配并不代表可以宽泛清理所有对象。
 - 仅仅因为同属 Codex 进程链路，并不意味着一个项目可以清理另一个项目的进程树。
 
 ## 它不会做什么
@@ -208,7 +209,7 @@ powershell -ExecutionPolicy Bypass -File "$env:CODEX_HOME\skills\codex-cleaning-
 - 如果一个长任务始终停留在同一个 assistant 回合里，应该在已结束的步骤之间请求 checkpoint cleanup，而不是只等最终回答。
 - 如果下一步可能还要复用某个进程，先让 Codex 跑 `inspect`，不要直接强制清理。
 - 如果某个进程没有被清理，可能是因为缺少工作区证据、自动化标记或其他高置信度归属信号，这通常是有意保守保留下来的结果。
-- 如果某些已经脱离 launcher 的 DevTools 或浏览器调试辅助进程本来就属于当前这个 Codex 对话，后续一次检查仍然可能通过“当前线程归属”把它们回收掉。
+- 如果某些已经脱离 launcher 的 DevTools 或浏览器调试辅助进程本来就属于当前这个 Codex 对话，第一次确认时可以先通过“当前线程归属”记账，后续一次检查仍然可能把它们回收掉。
 - 如果同时有多个 Codex 对话或多个项目在运行，无法证明属于当前任务的 DevTools 或浏览器调试残留会继续保持 `inspect-only`，这是为了避免跨项目误杀。
 
 ## 测试

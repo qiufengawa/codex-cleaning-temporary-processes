@@ -100,6 +100,53 @@ function Test-IsExplicitAutomationRecord {
   return $false
 }
 
+function Test-ShouldPersistThreadOwnershipRecord {
+  param([object]$Record)
+
+  if (-not (Test-IsExplicitAutomationRecord -Record $Record)) {
+    return $false
+  }
+
+  if ([bool]$Record.Killable) {
+    return $true
+  }
+
+  if ($Record.PSObject.Properties['ThreadOwnershipSeedable']) {
+    return [bool]$Record.ThreadOwnershipSeedable
+  }
+
+  return $false
+}
+
+function Normalize-ThreadOwnershipWorkspace {
+  param([string]$Workspace)
+
+  if ([string]::IsNullOrWhiteSpace($Workspace)) {
+    return $null
+  }
+
+  return $Workspace.Trim().TrimEnd('\', '/')
+}
+
+function Test-ThreadOwnershipWorkspaceMatch {
+  param(
+    [string]$EntryWorkspace,
+    [string]$Workspace
+  )
+
+  $normalizedWorkspace = Normalize-ThreadOwnershipWorkspace -Workspace $Workspace
+  if ([string]::IsNullOrWhiteSpace($normalizedWorkspace)) {
+    return $true
+  }
+
+  $normalizedEntryWorkspace = Normalize-ThreadOwnershipWorkspace -Workspace $EntryWorkspace
+  if ([string]::IsNullOrWhiteSpace($normalizedEntryWorkspace)) {
+    return $false
+  }
+
+  return $normalizedEntryWorkspace.Equals($normalizedWorkspace, [System.StringComparison]::OrdinalIgnoreCase)
+}
+
 function ConvertTo-ThreadOwnershipEntry {
   param(
     [object]$Record,
@@ -112,7 +159,7 @@ function ConvertTo-ThreadOwnershipEntry {
     Name          = [string]$Record.Name
     CommandLine   = [string]$Record.CommandLine
     Category      = [string]$Record.Category
-    Workspace     = $Workspace
+    Workspace     = Normalize-ThreadOwnershipWorkspace -Workspace $Workspace
     ObservedAtUtc = $ObservedAtUtc.ToString('o')
   }
 }
@@ -190,6 +237,7 @@ function Get-ActiveThreadOwnershipEntries {
   param(
     [string]$ThreadId,
     [object[]]$Processes,
+    [string]$Workspace,
     [datetime]$CurrentTimeUtc = [datetime]::UtcNow
   )
 
@@ -202,6 +250,10 @@ function Get-ActiveThreadOwnershipEntries {
 
   foreach ($entry in @(Get-ThreadOwnershipEntriesFromLedgerFile -ThreadId $ThreadId)) {
     if (-not (Test-IsExplicitAutomationRecord -Record $entry)) {
+      continue
+    }
+
+    if (-not (Test-ThreadOwnershipWorkspaceMatch -EntryWorkspace ([string]$entry.Workspace) -Workspace $Workspace)) {
       continue
     }
 
@@ -248,6 +300,7 @@ function Update-ThreadOwnershipEntries {
 
   $processMap = Get-ThreadOwnershipProcessMap -Processes $Processes
   $entriesByKey = @{}
+  $normalizedWorkspace = Normalize-ThreadOwnershipWorkspace -Workspace $Workspace
 
   foreach ($entry in @($ExistingEntries)) {
     if (-not (Test-IsExplicitAutomationRecord -Record $entry)) {
@@ -263,16 +316,17 @@ function Update-ThreadOwnershipEntries {
       continue
     }
 
-    $key = '{0}|{1}|{2}|{3}' -f $processId, [string]$entry.Name, [string]$entry.CommandLine, [string]$entry.Category
+    if (-not (Test-ThreadOwnershipWorkspaceMatch -EntryWorkspace ([string]$entry.Workspace) -Workspace $normalizedWorkspace)) {
+      continue
+    }
+
+    $entryWorkspace = Normalize-ThreadOwnershipWorkspace -Workspace ([string]$entry.Workspace)
+    $key = '{0}|{1}|{2}|{3}|{4}' -f $processId, [string]$entry.Name, [string]$entry.CommandLine, [string]$entry.Category, [string]$entryWorkspace
     $entriesByKey[$key] = $entry
   }
 
   foreach ($record in @($ClassifiedRecords)) {
-    if (-not $record.Killable) {
-      continue
-    }
-
-    if (-not (Test-IsExplicitAutomationRecord -Record $record)) {
+    if (-not (Test-ShouldPersistThreadOwnershipRecord -Record $record)) {
       continue
     }
 
@@ -282,7 +336,7 @@ function Update-ThreadOwnershipEntries {
     }
 
     $entry = ConvertTo-ThreadOwnershipEntry -Record $record -Workspace $Workspace -ObservedAtUtc $CurrentTimeUtc
-    $key = '{0}|{1}|{2}|{3}' -f $processId, [string]$entry.Name, [string]$entry.CommandLine, [string]$entry.Category
+    $key = '{0}|{1}|{2}|{3}|{4}' -f $processId, [string]$entry.Name, [string]$entry.CommandLine, [string]$entry.Category, [string]$entry.Workspace
     $entriesByKey[$key] = $entry
   }
 

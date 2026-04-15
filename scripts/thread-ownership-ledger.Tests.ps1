@@ -61,7 +61,7 @@ Describe 'thread ownership ledger' {
       }
     )
 
-    $result = @(Get-ActiveThreadOwnershipEntries -ThreadId $threadId -Processes $liveProcesses -CurrentTimeUtc $now)
+    $result = @(Get-ActiveThreadOwnershipEntries -ThreadId $threadId -Processes $liveProcesses -Workspace 'C:\Repo' -CurrentTimeUtc $now)
 
     $result.Count | Should Be 1
     $result[0].ProcessId | Should Be 401
@@ -70,7 +70,7 @@ Describe 'thread ownership ledger' {
     @($savedLedger.Entries)[0].ProcessId | Should Be 401
   }
 
-  It 'persists only killable explicit automation records for the current thread' {
+  It 'persists non-killable explicit automation records for the current thread on first observation' {
     . $libraryPath
 
     $threadId = 'thread-b'
@@ -82,18 +82,6 @@ Describe 'thread ownership ledger' {
         Name = 'node.exe'
         CommandLine = 'node C:\Temp\chrome-devtools-mcp.js'
       }
-      [pscustomobject]@{
-        ProcessId = 502
-        ParentProcessId = 1
-        Name = 'python.exe'
-        CommandLine = 'python -m uvicorn app.main:app --reload'
-      }
-      [pscustomobject]@{
-        ProcessId = 503
-        ParentProcessId = 1
-        Name = 'msedge.exe'
-        CommandLine = 'msedge.exe --remote-debugging-port=9222'
-      }
     )
     $classifiedRecords = @(
       [pscustomobject]@{
@@ -101,21 +89,8 @@ Describe 'thread ownership ledger' {
         Name = 'node.exe'
         CommandLine = 'node C:\Temp\chrome-devtools-mcp.js'
         Category = 'devtools-mcp'
-        Killable = $true
-      }
-      [pscustomobject]@{
-        ProcessId = 502
-        Name = 'python.exe'
-        CommandLine = 'python -m uvicorn app.main:app --reload'
-        Category = 'dev-tool'
-        Killable = $true
-      }
-      [pscustomobject]@{
-        ProcessId = 503
-        Name = 'msedge.exe'
-        CommandLine = 'msedge.exe --remote-debugging-port=9222'
-        Category = 'browser-debug'
         Killable = $false
+        ThreadOwnershipSeedable = $true
       }
     )
 
@@ -125,5 +100,107 @@ Describe 'thread ownership ledger' {
     $result[0].ProcessId | Should Be 501
     $result[0].Category | Should Be 'devtools-mcp'
     $result[0].Workspace | Should Be 'C:\Repo'
+
+    $ledgerPath = Get-ThreadOwnershipLedgerPath -ThreadId $threadId
+    $savedLedger = Get-Content -Raw -LiteralPath $ledgerPath | ConvertFrom-Json
+    @($savedLedger.Entries).Count | Should Be 1
+    @($savedLedger.Entries)[0].ProcessId | Should Be 501
+  }
+
+  It 'does not persist generic dev-tool records into the current thread ledger' {
+    . $libraryPath
+
+    $threadId = 'thread-c'
+    $now = [datetime]'2026-04-15T15:20:00Z'
+    $processes = @(
+      [pscustomobject]@{
+        ProcessId = 601
+        ParentProcessId = 1
+        Name = 'python.exe'
+        CommandLine = 'python -m uvicorn app.main:app --reload'
+      }
+    )
+    $classifiedRecords = @(
+      [pscustomobject]@{
+        ProcessId = 601
+        Name = 'python.exe'
+        CommandLine = 'python -m uvicorn app.main:app --reload'
+        Category = 'dev-tool'
+        Killable = $true
+      }
+    )
+
+    $result = @(Update-ThreadOwnershipEntries -ThreadId $threadId -ExistingEntries @() -Processes $processes -ClassifiedRecords $classifiedRecords -Workspace 'C:\Repo' -CurrentTimeUtc $now)
+
+    $result.Count | Should Be 0
+
+    $ledgerPath = Get-ThreadOwnershipLedgerPath -ThreadId $threadId
+    $savedLedger = Get-Content -Raw -LiteralPath $ledgerPath | ConvertFrom-Json
+    @($savedLedger.Entries).Count | Should Be 0
+  }
+
+  It 'does not persist non-killable explicit automation without a seedable ownership signal' {
+    . $libraryPath
+
+    $threadId = 'thread-seed-required'
+    $now = [datetime]'2026-04-15T15:25:00Z'
+    $processes = @(
+      [pscustomobject]@{
+        ProcessId = 650
+        ParentProcessId = 1
+        Name = 'node.exe'
+        CommandLine = 'node C:\Temp\chrome-devtools-mcp.js'
+      }
+    )
+    $classifiedRecords = @(
+      [pscustomobject]@{
+        ProcessId = 650
+        Name = 'node.exe'
+        CommandLine = 'node C:\Temp\chrome-devtools-mcp.js'
+        Category = 'devtools-mcp'
+        Killable = $false
+      }
+    )
+
+    $result = @(Update-ThreadOwnershipEntries -ThreadId $threadId -ExistingEntries @() -Processes $processes -ClassifiedRecords $classifiedRecords -Workspace 'C:\Repo' -CurrentTimeUtc $now)
+
+    $result.Count | Should Be 0
+
+    $ledgerPath = Get-ThreadOwnershipLedgerPath -ThreadId $threadId
+    $savedLedger = Get-Content -Raw -LiteralPath $ledgerPath | ConvertFrom-Json
+    @($savedLedger.Entries).Count | Should Be 0
+  }
+
+  It 'drops existing explicit automation claims when the current workspace changes' {
+    . $libraryPath
+
+    $threadId = 'thread-d'
+    $now = [datetime]'2026-04-15T15:30:00Z'
+    $processes = @(
+      [pscustomobject]@{
+        ProcessId = 701
+        ParentProcessId = 1
+        Name = 'node.exe'
+        CommandLine = 'node C:\Temp\chrome-devtools-mcp.js'
+      }
+    )
+    $existingEntries = @(
+      [pscustomobject]@{
+        ProcessId = 701
+        Name = 'node.exe'
+        CommandLine = 'node C:\Temp\chrome-devtools-mcp.js'
+        Category = 'devtools-mcp'
+        Workspace = 'C:\OtherRepo'
+        ObservedAtUtc = '2026-04-15T15:25:00Z'
+      }
+    )
+
+    $result = @(Update-ThreadOwnershipEntries -ThreadId $threadId -ExistingEntries $existingEntries -Processes $processes -ClassifiedRecords @() -Workspace 'C:\Repo' -CurrentTimeUtc $now)
+
+    $result.Count | Should Be 0
+
+    $ledgerPath = Get-ThreadOwnershipLedgerPath -ThreadId $threadId
+    $savedLedger = Get-Content -Raw -LiteralPath $ledgerPath | ConvertFrom-Json
+    @($savedLedger.Entries).Count | Should Be 0
   }
 }

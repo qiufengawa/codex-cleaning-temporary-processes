@@ -23,7 +23,7 @@ function Get-ClassifiedTemporaryProcessSnapshot {
   )
 
   $processes = @(Get-TemporaryProcessInventory)
-  $threadOwnershipEntries = @(Get-ActiveThreadOwnershipEntries -ThreadId $ThreadId -Processes $processes -CurrentTimeUtc $CurrentTimeUtc)
+  $threadOwnershipEntries = @(Get-ActiveThreadOwnershipEntries -ThreadId $ThreadId -Processes $processes -Workspace $Workspace -CurrentTimeUtc $CurrentTimeUtc)
   $childrenByParent = @{}
 
   foreach ($process in $processes) {

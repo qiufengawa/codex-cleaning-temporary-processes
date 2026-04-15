@@ -47,7 +47,7 @@ Require strong evidence before cleanup:
 - clear DevTools MCP markers
 - current-workspace match plus dev, test, build, preview, serve, run, or watch markers
 - for relative child commands, a parent or ancestor that already has both workspace evidence and known dev, test, build, serve, or watch markers
-- if multiple Codex tasks or workspaces may be active, explicit automation still needs current-task lineage or current-thread-owned explicit automation evidence; current-workspace match alone is not enough, and a current-thread-owned automation ledger may preserve that proof after the original launcher exits, but it never broadens cleanup for generic runtimes
+- if multiple Codex tasks or workspaces may be active, explicit automation still needs current-task lineage or current-thread-owned explicit automation evidence; current-workspace match alone is not enough, and a current-thread-owned automation ledger may seed from a first confirmed Codex-owned explicit-automation observation and preserve that proof after the original launcher exits, but it never broadens cleanup for generic runtimes
 
 If only one weak signal is present, inspect and report instead of killing.
 
@@ -64,6 +64,7 @@ Never kill:
 - normal user browsers without automation or remote-debug flags
 - user-owned runtimes such as Node, Python, Java, Ruby, PHP, Go, or .NET when they do not match current task work
 - DevTools MCP, browser automation, or remote-debug browser sessions that lack current-task lineage or current-thread-owned explicit automation evidence
+- Codex `app-server` ancestry by itself; it can make explicit automation ledger-seedable, but not immediately killable
 - descendants that only trace back to Codex shell ancestry without real workspace-backed task evidence
 - anything you are not highly confident is temporary
 
@@ -112,7 +113,7 @@ This skill is meant for mainstream development workflows across multiple ecosyst
 - watchdog processes with `telemetry/watchdog/main.js`
 - launchers with `npx-cli.js -y chrome-devtools-mcp@latest`
 - wrapper shells whose command lines explicitly include `chrome-devtools-mcp`, `playwright`, or `--remote-debugging-port`
-- current-thread-owned explicit automation that this Codex conversation already proved it owned earlier in the task
+- current-thread-owned explicit automation that this Codex conversation already seeded or proved it owned earlier in the task
 - temporary shells or runtime processes that clearly show dev, build, preview, test, serve, runserver, or watch modes for the current workspace
 - relative child processes only when a parent or ancestor is already workspace-backed and matches known dev, test, build, serve, or watch markers
 - browser processes only when command lines clearly include automation flags such as `--remote-debugging-port`, `--headless`, or `playwright`
@@ -197,4 +198,4 @@ Pass `-Workspace` whenever a repo path helps distinguish current task-owned shel
 - `inspect` mode lists temporary candidates and protected process classes
 - `checkpoint-cleanup` mode kills only high-confidence step-finished leftovers
 - `cleanup` mode kills only high-confidence temporary targets and any separately classified `cleanup-now` descendants, then reports the post-cleanup snapshot plus any failed kill ids
-- thread-owned explicit automation recovery uses local runtime state under `CODEX_HOME/state/...` or the OS temp directory when `CODEX_THREAD_ID` is available; otherwise explicit automation falls back to current-task lineage while generic dev tools continue using workspace and ancestor evidence
+- thread-owned explicit automation recovery uses local runtime state under `CODEX_HOME/state/...` or the OS temp directory when `CODEX_THREAD_ID` is available; first confirmed Codex-owned explicit-automation observations can seed that ledger, but Codex `app-server` ancestry alone never authorizes immediate cleanup; otherwise explicit automation falls back to current-task lineage while generic dev tools continue using workspace and ancestor evidence

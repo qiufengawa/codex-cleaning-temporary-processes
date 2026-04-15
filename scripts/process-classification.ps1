@@ -30,6 +30,7 @@ $script:DirectToolNamePatterns = @(
 $script:BrowserAutomationPattern = "playwright|remote-debugging-port|--headless"
 $script:BrowserDebugPattern = "--remote-debugging-port|--headless|playwright"
 $script:CodexParentNamePattern = "^Codex(\.exe)?$"
+$script:CodexAppServerCommandPattern = "\bapp-server\b"
 
 $script:HighConfidenceShellPatterns = @(
   "\bplaywright\b",
@@ -113,7 +114,8 @@ function New-ProcessRecord {
     [object]$Process,
     [string]$Category,
     [bool]$Killable,
-    [string]$Reason
+    [string]$Reason,
+    [bool]$ThreadOwnershipSeedable = $false
   )
 
   [pscustomobject]@{
@@ -123,6 +125,7 @@ function New-ProcessRecord {
     Category        = $Category
     Killable        = $Killable
     Reason          = $Reason
+    ThreadOwnershipSeedable = $ThreadOwnershipSeedable
     CommandLine     = [string]$Process.CommandLine
   }
 }
@@ -150,6 +153,16 @@ function Get-WorkspacePattern {
   }
 
   return '(?i)(?<![A-Za-z0-9_.-])' + $pathPattern + '(?=$|[\\/''"\s;&|])'
+}
+
+function Get-NormalizedWorkspaceValue {
+  param([string]$Workspace)
+
+  if ([string]::IsNullOrWhiteSpace($Workspace)) {
+    return $null
+  }
+
+  return $Workspace.Trim().TrimEnd('\', '/').ToLowerInvariant()
 }
 
 function Test-PatternList {
@@ -214,6 +227,59 @@ function Get-ParentProcessName {
   }
 
   return $null
+}
+
+function Test-CodexAppServerProcess {
+  param([object]$Process)
+
+  if ($null -eq $Process) {
+    return $false
+  }
+
+  $name = [string]$Process.Name
+  $commandLine = [string]$Process.CommandLine
+
+  return (
+    (Test-NamePatternList -Value $name -Patterns @($script:CodexParentNamePattern)) -and
+    ($commandLine -match $script:CodexAppServerCommandPattern)
+  )
+}
+
+function Get-CodexAppServerAncestorId {
+  param(
+    [int]$ProcessId,
+    [hashtable]$ProcessById
+  )
+
+  $visited = @{}
+  $ancestorId = $ProcessId
+
+  while ($ancestorId -gt 0 -and $ProcessById.ContainsKey($ancestorId) -and -not $visited.ContainsKey($ancestorId)) {
+    $visited[$ancestorId] = $true
+
+    $ancestor = $ProcessById[$ancestorId]
+    if (Test-CodexAppServerProcess -Process $ancestor) {
+      return $ancestorId
+    }
+
+    $ancestorId = [int]$ancestor.ParentProcessId
+  }
+
+  return 0
+}
+
+function Test-CurrentThreadCodexAppServerExplicitAutomationAncestry {
+  param(
+    [object]$Process,
+    [hashtable]$ProcessById,
+    [int]$CurrentCodexAppServerId
+  )
+
+  if ($null -eq $Process -or $CurrentCodexAppServerId -le 0) {
+    return $false
+  }
+
+  return (Get-CodexAppServerAncestorId -ProcessId ([int]$Process.ProcessId) -ProcessById $ProcessById) -eq $CurrentCodexAppServerId
 }
 
 function Test-ProcessAnchorsTaskOwnership {
@@ -352,7 +418,8 @@ function Test-ThreadOwnedExplicitAutomation {
   param(
     [object]$Process,
     [string]$Category,
-    [hashtable]$ThreadOwnershipIndex
+    [hashtable]$ThreadOwnershipIndex,
+    [string]$CurrentWorkspace = $null
   )
 
   if ($null -eq $Process -or $null -eq $ThreadOwnershipIndex) {
@@ -364,11 +431,21 @@ function Test-ThreadOwnedExplicitAutomation {
     return $false
   }
 
+  $normalizedWorkspace = Get-NormalizedWorkspaceValue -Workspace $CurrentWorkspace
+
   foreach ($entry in $ThreadOwnershipIndex[$processId]) {
+    $entryWorkspace = Get-NormalizedWorkspaceValue -Workspace ([string]$entry.Workspace)
     if (
       ([string]$entry.Category -eq $Category) -and
       ([string]$entry.Name -eq [string]$Process.Name) -and
-      ([string]$entry.CommandLine -eq [string]$Process.CommandLine)
+      ([string]$entry.CommandLine -eq [string]$Process.CommandLine) -and
+      (
+        [string]::IsNullOrWhiteSpace($normalizedWorkspace) -or
+        (
+          -not [string]::IsNullOrWhiteSpace($entryWorkspace) -and
+          $entryWorkspace -eq $normalizedWorkspace
+        )
+      )
     ) {
       return $true
     }
@@ -382,14 +459,21 @@ function New-ExplicitAutomationRecord {
     [object]$Process,
     [string]$Category,
     [bool]$TaskOwned,
-    [string]$OwnedReason
+    [string]$OwnedReason,
+    [bool]$ThreadOwnershipSeedable = $false
   )
 
   if ($TaskOwned) {
-    return New-ProcessRecord -Process $Process -Category $Category -Killable:$true -Reason $OwnedReason
+    return New-ProcessRecord -Process $Process -Category $Category -Killable:$true -Reason $OwnedReason -ThreadOwnershipSeedable:$ThreadOwnershipSeedable
   }
 
-  return New-ProcessRecord -Process $Process -Category $Category -Killable:$false -Reason "Explicit automation without current-task lineage or current-thread ownership evidence"
+  $reason = if ($ThreadOwnershipSeedable) {
+    "Explicit automation shares the current Codex app-server lineage and is eligible for current-thread ledger seeding"
+  } else {
+    "Explicit automation without current-task lineage or current-thread ownership evidence"
+  }
+
+  return New-ProcessRecord -Process $Process -Category $Category -Killable:$false -Reason $reason -ThreadOwnershipSeedable:$ThreadOwnershipSeedable
 }
 
 function Classify-TemporaryProcess {
@@ -397,7 +481,9 @@ function Classify-TemporaryProcess {
     [object]$Process,
     [hashtable]$ProcessById,
     [string]$WorkspacePattern,
+    [string]$Workspace = $null,
     [hashtable]$ThreadOwnershipIndex = $null,
+    [int]$CurrentCodexAppServerId = 0,
     [int]$CurrentProcessId = $PID
   )
 
@@ -422,7 +508,8 @@ function Classify-TemporaryProcess {
     }
 
     if ((Test-ExplicitAutomationShellCommandLine -CommandLine $commandLine) -and $commandLine -notmatch "ConvertFrom-Json") {
-      $threadOwned = Test-ThreadOwnedExplicitAutomation -Process $Process -Category "tool-shell" -ThreadOwnershipIndex $ThreadOwnershipIndex
+      $threadOwned = Test-ThreadOwnedExplicitAutomation -Process $Process -Category "tool-shell" -ThreadOwnershipIndex $ThreadOwnershipIndex -CurrentWorkspace $Workspace
+      $threadOwnershipSeedable = Test-CurrentThreadCodexAppServerExplicitAutomationAncestry -Process $Process -ProcessById $ProcessById -CurrentCodexAppServerId $CurrentCodexAppServerId
       $explicitAutomationOwned = Test-ExplicitAutomationOwnershipEvidence -TaskOwnedAncestor $taskOwnedAncestor -ThreadOwned $threadOwned
       $ownedReason = if ($threadOwned -and -not $taskOwnedAncestor) {
         "Current-thread shell for explicit automation work"
@@ -430,7 +517,7 @@ function Classify-TemporaryProcess {
         "Current-task lineage for explicit automation work"
       }
 
-      return New-ExplicitAutomationRecord -Process $Process -Category "tool-shell" -TaskOwned $explicitAutomationOwned -OwnedReason $ownedReason
+      return New-ExplicitAutomationRecord -Process $Process -Category "tool-shell" -TaskOwned $explicitAutomationOwned -OwnedReason $ownedReason -ThreadOwnershipSeedable:$threadOwnershipSeedable
     }
 
     if (
@@ -445,7 +532,8 @@ function Classify-TemporaryProcess {
 
   if (Test-NamePatternList -Value $name -Patterns $script:CmdShellNamePatterns) {
     if (Test-ExplicitAutomationShellCommandLine -CommandLine $commandLine) {
-      $threadOwned = Test-ThreadOwnedExplicitAutomation -Process $Process -Category "tool-shell" -ThreadOwnershipIndex $ThreadOwnershipIndex
+      $threadOwned = Test-ThreadOwnedExplicitAutomation -Process $Process -Category "tool-shell" -ThreadOwnershipIndex $ThreadOwnershipIndex -CurrentWorkspace $Workspace
+      $threadOwnershipSeedable = Test-CurrentThreadCodexAppServerExplicitAutomationAncestry -Process $Process -ProcessById $ProcessById -CurrentCodexAppServerId $CurrentCodexAppServerId
       $explicitAutomationOwned = Test-ExplicitAutomationOwnershipEvidence -TaskOwnedAncestor $taskOwnedAncestor -ThreadOwned $threadOwned
       $ownedReason = if ($threadOwned -and -not $taskOwnedAncestor) {
         "Current-thread shell for explicit automation work"
@@ -453,7 +541,7 @@ function Classify-TemporaryProcess {
         "Current-task lineage for explicit automation work"
       }
 
-      return New-ExplicitAutomationRecord -Process $Process -Category "tool-shell" -TaskOwned $explicitAutomationOwned -OwnedReason $ownedReason
+      return New-ExplicitAutomationRecord -Process $Process -Category "tool-shell" -TaskOwned $explicitAutomationOwned -OwnedReason $ownedReason -ThreadOwnershipSeedable:$threadOwnershipSeedable
     }
 
     if (Test-TemporaryShellCommandLine -CommandLine $commandLine -WorkspaceMatch $workspaceMatch -TaskOwnedAncestor $taskOwnedAncestor) {
@@ -465,7 +553,8 @@ function Classify-TemporaryProcess {
 
   if (Test-NamePatternList -Value $name -Patterns $script:NodeNamePatterns) {
     if ($commandLine -match "telemetry\\watchdog\\main\.js") {
-      $threadOwned = Test-ThreadOwnedExplicitAutomation -Process $Process -Category "devtools-watchdog" -ThreadOwnershipIndex $ThreadOwnershipIndex
+      $threadOwned = Test-ThreadOwnedExplicitAutomation -Process $Process -Category "devtools-watchdog" -ThreadOwnershipIndex $ThreadOwnershipIndex -CurrentWorkspace $Workspace
+      $threadOwnershipSeedable = Test-CurrentThreadCodexAppServerExplicitAutomationAncestry -Process $Process -ProcessById $ProcessById -CurrentCodexAppServerId $CurrentCodexAppServerId
       $explicitAutomationOwned = Test-ExplicitAutomationOwnershipEvidence -TaskOwnedAncestor $taskOwnedAncestor -ThreadOwned $threadOwned
       $ownedReason = if ($threadOwned -and -not $taskOwnedAncestor) {
         "Current-thread DevTools MCP watchdog"
@@ -473,11 +562,12 @@ function Classify-TemporaryProcess {
         "Current-task lineage for DevTools MCP watchdog"
       }
 
-      return New-ExplicitAutomationRecord -Process $Process -Category "devtools-watchdog" -TaskOwned $explicitAutomationOwned -OwnedReason $ownedReason
+      return New-ExplicitAutomationRecord -Process $Process -Category "devtools-watchdog" -TaskOwned $explicitAutomationOwned -OwnedReason $ownedReason -ThreadOwnershipSeedable:$threadOwnershipSeedable
     }
 
     if ($commandLine -match "npx-cli\.js.*chrome-devtools-mcp@latest") {
-      $threadOwned = Test-ThreadOwnedExplicitAutomation -Process $Process -Category "devtools-launcher" -ThreadOwnershipIndex $ThreadOwnershipIndex
+      $threadOwned = Test-ThreadOwnedExplicitAutomation -Process $Process -Category "devtools-launcher" -ThreadOwnershipIndex $ThreadOwnershipIndex -CurrentWorkspace $Workspace
+      $threadOwnershipSeedable = Test-CurrentThreadCodexAppServerExplicitAutomationAncestry -Process $Process -ProcessById $ProcessById -CurrentCodexAppServerId $CurrentCodexAppServerId
       $explicitAutomationOwned = Test-ExplicitAutomationOwnershipEvidence -TaskOwnedAncestor $taskOwnedAncestor -ThreadOwned $threadOwned
       $ownedReason = if ($threadOwned -and -not $taskOwnedAncestor) {
         "Current-thread DevTools MCP launcher"
@@ -485,11 +575,12 @@ function Classify-TemporaryProcess {
         "Current-task lineage for DevTools MCP launcher"
       }
 
-      return New-ExplicitAutomationRecord -Process $Process -Category "devtools-launcher" -TaskOwned $explicitAutomationOwned -OwnedReason $ownedReason
+      return New-ExplicitAutomationRecord -Process $Process -Category "devtools-launcher" -TaskOwned $explicitAutomationOwned -OwnedReason $ownedReason -ThreadOwnershipSeedable:$threadOwnershipSeedable
     }
 
     if ($commandLine -match "chrome-devtools-mcp") {
-      $threadOwned = Test-ThreadOwnedExplicitAutomation -Process $Process -Category "devtools-mcp" -ThreadOwnershipIndex $ThreadOwnershipIndex
+      $threadOwned = Test-ThreadOwnedExplicitAutomation -Process $Process -Category "devtools-mcp" -ThreadOwnershipIndex $ThreadOwnershipIndex -CurrentWorkspace $Workspace
+      $threadOwnershipSeedable = Test-CurrentThreadCodexAppServerExplicitAutomationAncestry -Process $Process -ProcessById $ProcessById -CurrentCodexAppServerId $CurrentCodexAppServerId
       $explicitAutomationOwned = Test-ExplicitAutomationOwnershipEvidence -TaskOwnedAncestor $taskOwnedAncestor -ThreadOwned $threadOwned
       $ownedReason = if ($threadOwned -and -not $taskOwnedAncestor) {
         "Current-thread DevTools MCP service"
@@ -497,7 +588,7 @@ function Classify-TemporaryProcess {
         "Current-task lineage for DevTools MCP service"
       }
 
-      return New-ExplicitAutomationRecord -Process $Process -Category "devtools-mcp" -TaskOwned $explicitAutomationOwned -OwnedReason $ownedReason
+      return New-ExplicitAutomationRecord -Process $Process -Category "devtools-mcp" -TaskOwned $explicitAutomationOwned -OwnedReason $ownedReason -ThreadOwnershipSeedable:$threadOwnershipSeedable
     }
 
     if ($taskOwned -and (Test-PatternList -Value $commandLine -Patterns $script:WorkspaceScopedNodePatterns)) {
@@ -505,7 +596,8 @@ function Classify-TemporaryProcess {
     }
 
     if ($commandLine -match $script:BrowserAutomationPattern) {
-      $threadOwned = Test-ThreadOwnedExplicitAutomation -Process $Process -Category "browser-automation" -ThreadOwnershipIndex $ThreadOwnershipIndex
+      $threadOwned = Test-ThreadOwnedExplicitAutomation -Process $Process -Category "browser-automation" -ThreadOwnershipIndex $ThreadOwnershipIndex -CurrentWorkspace $Workspace
+      $threadOwnershipSeedable = Test-CurrentThreadCodexAppServerExplicitAutomationAncestry -Process $Process -ProcessById $ProcessById -CurrentCodexAppServerId $CurrentCodexAppServerId
       $explicitAutomationOwned = Test-ExplicitAutomationOwnershipEvidence -TaskOwnedAncestor $taskOwnedAncestor -ThreadOwned $threadOwned
       $ownedReason = if ($threadOwned -and -not $taskOwnedAncestor) {
         "Current-thread browser automation helper"
@@ -513,7 +605,7 @@ function Classify-TemporaryProcess {
         "Current-task lineage for browser automation helper"
       }
 
-      return New-ExplicitAutomationRecord -Process $Process -Category "browser-automation" -TaskOwned $explicitAutomationOwned -OwnedReason $ownedReason
+      return New-ExplicitAutomationRecord -Process $Process -Category "browser-automation" -TaskOwned $explicitAutomationOwned -OwnedReason $ownedReason -ThreadOwnershipSeedable:$threadOwnershipSeedable
     }
 
     return $null
@@ -537,7 +629,8 @@ function Classify-TemporaryProcess {
 
   if (Test-NamePatternList -Value $name -Patterns $script:BrowserNamePatterns) {
     if ($commandLine -match $script:BrowserDebugPattern) {
-      $threadOwned = Test-ThreadOwnedExplicitAutomation -Process $Process -Category "browser-debug" -ThreadOwnershipIndex $ThreadOwnershipIndex
+      $threadOwned = Test-ThreadOwnedExplicitAutomation -Process $Process -Category "browser-debug" -ThreadOwnershipIndex $ThreadOwnershipIndex -CurrentWorkspace $Workspace
+      $threadOwnershipSeedable = Test-CurrentThreadCodexAppServerExplicitAutomationAncestry -Process $Process -ProcessById $ProcessById -CurrentCodexAppServerId $CurrentCodexAppServerId
       $explicitAutomationOwned = Test-ExplicitAutomationOwnershipEvidence -TaskOwnedAncestor $taskOwnedAncestor -ThreadOwned $threadOwned
       $ownedReason = if ($threadOwned -and -not $taskOwnedAncestor) {
         "Current-thread browser automation or remote-debug session"
@@ -545,7 +638,7 @@ function Classify-TemporaryProcess {
         "Current-task lineage for browser automation or remote-debug session"
       }
 
-      return New-ExplicitAutomationRecord -Process $Process -Category "browser-debug" -TaskOwned $explicitAutomationOwned -OwnedReason $ownedReason
+      return New-ExplicitAutomationRecord -Process $Process -Category "browser-debug" -TaskOwned $explicitAutomationOwned -OwnedReason $ownedReason -ThreadOwnershipSeedable:$threadOwnershipSeedable
     }
 
     return $null
@@ -569,9 +662,10 @@ function Get-TemporaryProcessClassifications {
 
   $workspacePattern = Get-WorkspacePattern -Workspace $Workspace
   $threadOwnershipIndex = Get-ThreadOwnershipIndex -ThreadOwnershipEntries $ThreadOwnershipEntries
+  $currentCodexAppServerId = Get-CodexAppServerAncestorId -ProcessId $CurrentProcessId -ProcessById $processById
 
   $classified = foreach ($process in $Processes) {
-    $record = Classify-TemporaryProcess -Process $process -ProcessById $processById -WorkspacePattern $workspacePattern -ThreadOwnershipIndex $threadOwnershipIndex -CurrentProcessId $CurrentProcessId
+    $record = Classify-TemporaryProcess -Process $process -ProcessById $processById -WorkspacePattern $workspacePattern -Workspace $Workspace -ThreadOwnershipIndex $threadOwnershipIndex -CurrentCodexAppServerId $currentCodexAppServerId -CurrentProcessId $CurrentProcessId
     if ($null -ne $record) {
       $record
     }

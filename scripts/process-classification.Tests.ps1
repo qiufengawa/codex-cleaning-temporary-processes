@@ -320,6 +320,203 @@ Describe 'Get-TemporaryProcessClassifications' {
     $result[0].Killable | Should Be $true
   }
 
+  It 'marks Codex app-server explicit automation launcher shells as thread-seedable but not killable without a matching ledger claim' {
+    . $libraryPath
+
+    $processes = @(
+      [pscustomobject]@{
+        ProcessId = 163
+        ParentProcessId = 1
+        Name = 'Codex'
+        CommandLine = 'Codex.exe app-server'
+      }
+      [pscustomobject]@{
+        ProcessId = 164
+        ParentProcessId = 163
+        Name = 'powershell.exe'
+        CommandLine = 'powershell.exe -NoProfile'
+      }
+      [pscustomobject]@{
+        ProcessId = 165
+        ParentProcessId = 163
+        Name = 'cmd.exe'
+        CommandLine = 'cmd.exe /d /s /c npx -y chrome-devtools-mcp@latest'
+      }
+    )
+
+    $result = @(Get-TemporaryProcessClassifications -Processes $processes -Workspace 'C:\Repo' -CurrentProcessId 164 | Where-Object { $_.ProcessId -eq 165 })
+
+    $result.Count | Should Be 1
+    $result[0].Category | Should Be 'tool-shell'
+    $result[0].Killable | Should Be $false
+    $result[0].ThreadOwnershipSeedable | Should Be $true
+  }
+
+  It 'classifies Codex app-server explicit automation descendants as killable when the current thread ledger matches the workspace' {
+    . $libraryPath
+
+    $processes = @(
+      [pscustomobject]@{
+        ProcessId = 166
+        ParentProcessId = 1
+        Name = 'Codex'
+        CommandLine = 'Codex.exe app-server'
+      }
+      [pscustomobject]@{
+        ProcessId = 167
+        ParentProcessId = 166
+        Name = 'powershell.exe'
+        CommandLine = 'powershell.exe -NoProfile'
+      }
+      [pscustomobject]@{
+        ProcessId = 168
+        ParentProcessId = 166
+        Name = 'cmd.exe'
+        CommandLine = 'cmd.exe /d /s /c npx -y chrome-devtools-mcp@latest'
+      }
+      [pscustomobject]@{
+        ProcessId = 169
+        ParentProcessId = 168
+        Name = 'node.exe'
+        CommandLine = '"C:\Program Files\nodejs\node.exe" "C:\Program Files\nodejs\node_modules\npm\bin\npx-cli.js" -y chrome-devtools-mcp@latest'
+      }
+      [pscustomobject]@{
+        ProcessId = 170
+        ParentProcessId = 169
+        Name = 'node.exe'
+        CommandLine = 'node C:\Temp\npm-cache\_npx\pkg\chrome-devtools-mcp\build\src\bin\chrome-devtools-mcp.js'
+      }
+      [pscustomobject]@{
+        ProcessId = 171
+        ParentProcessId = 170
+        Name = 'node.exe'
+        CommandLine = 'node C:\Temp\npm-cache\_npx\pkg\chrome-devtools-mcp\build\src\telemetry\watchdog\main.js --parent-pid=170'
+      }
+    )
+    $threadOwnershipEntries = @(
+      [pscustomobject]@{
+        ProcessId = 168
+        Name = 'cmd.exe'
+        CommandLine = 'cmd.exe /d /s /c npx -y chrome-devtools-mcp@latest'
+        Category = 'tool-shell'
+        Workspace = 'C:\Repo'
+        ObservedAtUtc = '2026-04-15T14:15:00Z'
+      }
+      [pscustomobject]@{
+        ProcessId = 169
+        Name = 'node.exe'
+        CommandLine = '"C:\Program Files\nodejs\node.exe" "C:\Program Files\nodejs\node_modules\npm\bin\npx-cli.js" -y chrome-devtools-mcp@latest'
+        Category = 'devtools-launcher'
+        Workspace = 'C:\Repo'
+        ObservedAtUtc = '2026-04-15T14:15:01Z'
+      }
+      [pscustomobject]@{
+        ProcessId = 170
+        Name = 'node.exe'
+        CommandLine = 'node C:\Temp\npm-cache\_npx\pkg\chrome-devtools-mcp\build\src\bin\chrome-devtools-mcp.js'
+        Category = 'devtools-mcp'
+        Workspace = 'C:\Repo'
+        ObservedAtUtc = '2026-04-15T14:15:02Z'
+      }
+      [pscustomobject]@{
+        ProcessId = 171
+        Name = 'node.exe'
+        CommandLine = 'node C:\Temp\npm-cache\_npx\pkg\chrome-devtools-mcp\build\src\telemetry\watchdog\main.js --parent-pid=170'
+        Category = 'devtools-watchdog'
+        Workspace = 'C:\Repo'
+        ObservedAtUtc = '2026-04-15T14:15:03Z'
+      }
+    )
+
+    $result = @(Get-TemporaryProcessClassifications -Processes $processes -Workspace 'C:\Repo' -ThreadOwnershipEntries $threadOwnershipEntries -CurrentProcessId 167)
+    $launcherShell = @($result | Where-Object { $_.ProcessId -eq 168 })
+    $launcherNode = @($result | Where-Object { $_.ProcessId -eq 169 })
+    $serviceNode = @($result | Where-Object { $_.ProcessId -eq 170 })
+    $watchdogNode = @($result | Where-Object { $_.ProcessId -eq 171 })
+
+    $launcherShell.Count | Should Be 1
+    $launcherShell[0].Category | Should Be 'tool-shell'
+    $launcherShell[0].Killable | Should Be $true
+    $launcherShell[0].ThreadOwnershipSeedable | Should Be $true
+
+    $launcherNode.Count | Should Be 1
+    $launcherNode[0].Category | Should Be 'devtools-launcher'
+    $launcherNode[0].Killable | Should Be $true
+    $launcherNode[0].ThreadOwnershipSeedable | Should Be $true
+
+    $serviceNode.Count | Should Be 1
+    $serviceNode[0].Category | Should Be 'devtools-mcp'
+    $serviceNode[0].Killable | Should Be $true
+    $serviceNode[0].ThreadOwnershipSeedable | Should Be $true
+
+    $watchdogNode.Count | Should Be 1
+    $watchdogNode[0].Category | Should Be 'devtools-watchdog'
+    $watchdogNode[0].Killable | Should Be $true
+    $watchdogNode[0].ThreadOwnershipSeedable | Should Be $true
+  }
+
+  It 'does not let a mismatched workspace ledger claim make Codex app-server explicit automation killable' {
+    . $libraryPath
+
+    $processes = @(
+      [pscustomobject]@{
+        ProcessId = 172
+        ParentProcessId = 1
+        Name = 'Codex'
+        CommandLine = 'Codex.exe app-server'
+      }
+      [pscustomobject]@{
+        ProcessId = 173
+        ParentProcessId = 172
+        Name = 'powershell.exe'
+        CommandLine = 'powershell.exe -NoProfile'
+      }
+      [pscustomobject]@{
+        ProcessId = 174
+        ParentProcessId = 172
+        Name = 'node.exe'
+        CommandLine = 'node C:\Temp\npm-cache\_npx\pkg\chrome-devtools-mcp\build\src\bin\chrome-devtools-mcp.js'
+      }
+    )
+    $threadOwnershipEntries = @(
+      [pscustomobject]@{
+        ProcessId = 174
+        Name = 'node.exe'
+        CommandLine = 'node C:\Temp\npm-cache\_npx\pkg\chrome-devtools-mcp\build\src\bin\chrome-devtools-mcp.js'
+        Category = 'devtools-mcp'
+        Workspace = 'C:\OtherRepo'
+        ObservedAtUtc = '2026-04-15T14:16:00Z'
+      }
+    )
+
+    $result = @(Get-TemporaryProcessClassifications -Processes $processes -Workspace 'C:\Repo' -ThreadOwnershipEntries $threadOwnershipEntries -CurrentProcessId 173 | Where-Object { $_.ProcessId -eq 174 })
+
+    $result.Count | Should Be 1
+    $result[0].Category | Should Be 'devtools-mcp'
+    $result[0].Killable | Should Be $false
+    $result[0].ThreadOwnershipSeedable | Should Be $true
+  }
+
+  It 'does not let workspace-only explicit automation launcher shells become killable without lineage or ledger ownership' {
+    . $libraryPath
+
+    $processes = @(
+      [pscustomobject]@{
+        ProcessId = 175
+        ParentProcessId = 1
+        Name = 'cmd.exe'
+        CommandLine = 'cmd.exe /d /s /c npx -y chrome-devtools-mcp@latest --user-data-dir=C:\Repo\.tmp\chrome-profile'
+      }
+    )
+
+    $result = @(Get-TemporaryProcessClassifications -Processes $processes -Workspace 'C:\Repo')
+
+    $result.Count | Should Be 1
+    $result[0].Category | Should Be 'tool-shell'
+    $result[0].Killable | Should Be $false
+    $result[0].ThreadOwnershipSeedable | Should Be $false
+  }
+
   It 'classifies workspace-scoped cargo tauri dev shells as temporary tool shells' {
     . $libraryPath
 
@@ -1107,6 +1304,35 @@ Describe 'Get-TemporaryProcessClassifications' {
     $result.Count | Should Be 1
     $result[0].ProcessId | Should Be 139
     $result[0].Category | Should Be 'protected-shell'
+  }
+
+  It 'does not let Codex app-server lineage alone make generic dev tools killable' {
+    . $libraryPath
+
+    $processes = @(
+      [pscustomobject]@{
+        ProcessId = 176
+        ParentProcessId = 1
+        Name = 'Codex'
+        CommandLine = 'Codex.exe app-server'
+      }
+      [pscustomobject]@{
+        ProcessId = 177
+        ParentProcessId = 176
+        Name = 'powershell.exe'
+        CommandLine = 'powershell.exe -NoProfile'
+      }
+      [pscustomobject]@{
+        ProcessId = 178
+        ParentProcessId = 176
+        Name = 'pnpm'
+        CommandLine = 'pnpm dev'
+      }
+    )
+
+    $result = @(Get-TemporaryProcessClassifications -Processes $processes -Workspace 'C:\Repo' -CurrentProcessId 177)
+
+    $result.Count | Should Be 0
   }
 
   It 'does not classify unrelated node children just because an ancestor is task-owned' {
