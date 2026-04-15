@@ -6,7 +6,7 @@ Codex Cleaning Temporary Processes 是一个公开的跨平台 skill，用来安
 
 这个 skill 的核心是“已结束检查点”，而不是“等整个任务结束再想起清理”。当高风险步骤、自动化步骤、子代理步骤，或者一批一次性命令已经结束时，Codex 就应该重新判断现在是否适合安全清理。
 
-它的适用范围也不局限于单一语言。这个 skill 可以理解 npm、vite、vitest、cargo、tauri、pytest、dotnet、Go、Ruby、PHP 以及浏览器自动化 helper 等主流工具链留下的临时进程，同时继续保持保守的清理策略。
+它的适用范围也不局限于单一语言。这个 skill 可以理解 npm、vite、vitest、cargo、tauri、trunk、hatch、pytest、jupyter、streamlit、dotnet、Kotlin、Scala、Go、Ruby、PHP、Elixir 以及浏览器自动化 helper 等主流工具链留下的临时进程，同时继续保持保守的清理策略。
 
 安全仍然是设计核心：
 

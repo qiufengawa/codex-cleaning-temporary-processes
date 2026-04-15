@@ -20,9 +20,9 @@ The skill is intentionally broader than a single frontend stack. It should reaso
 
 - JavaScript and TypeScript: `npm`, `pnpm`, `yarn`, `bun`, `vite`, `vitest`, `jest`, `webpack`, `rollup`, `next`, `nuxt`, `turbo`
 - Rust and native tooling: `cargo`, `rustc`, `tauri`, `trunk`
-- Python: `python`, `uv`, `pip`, `poetry`, `hatch`, `pytest`
-- JVM and .NET: `java`, `mvn`, `gradle`, `dotnet`
-- Other popular stacks: `go`, `ruby`, `bundle`, `rails`, `php`, `composer`, `artisan`, `elixir`, `mix`, `deno`
+- Python: `python`, `uv`, `pip`, `pipenv`, `poetry`, `hatch`, `pytest`, `uvicorn`, `jupyter`, `streamlit`
+- JVM and .NET: `java`, `mvn`, `gradle`, `kotlin`, `scala`, `dotnet`
+- Other popular stacks: `go`, `ruby`, `bundle`, `rails`, `php`, `composer`, `artisan`, `elixir`, `mix`, `iex`, `rebar3`, `deno`
 - Browser automation and remote debugging: `chrome-devtools-mcp`, Playwright-style tooling, headless browsers, remote-debug launchers
 
 Coverage is language-agnostic, but cleanup is still conservative.
@@ -46,6 +46,15 @@ Use:
 - `inspect` when reuse is still plausible
 - `checkpoint-cleanup` when a finished checkpoint left high-confidence leftovers
 - `cleanup` for the final sweep when the remaining temporary tree is clearly done
+
+## Practical Limits
+
+This package is still a pure skill, not a background plugin.
+
+- It can improve Codex's odds of reconsidering cleanup at the right checkpoints
+- It cannot inject fixed host hooks, timers, or always-on callbacks into the Codex app
+- If your environment does not perform implicit invocation reliably enough, explicit use of `$codex-cleaning-temporary-processes` is still the honest fallback
+- Broad toolchain coverage does not loosen the safety bar: ownership and workspace evidence still decide whether something is inspect-only or reclaimable
 
 ## Safety Model
 

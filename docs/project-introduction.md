@@ -6,7 +6,7 @@ The package is intentionally pure skill, not a plugin. Its goal is to give Codex
 
 The skill is designed around finished checkpoints rather than task-end memory. After a finished high-risk step, a finished automation checkpoint, a finished subagent, or a finished batch of one-shot commands, Codex should reconsider whether cleanup is now safe and useful.
 
-The supported scope is broader than a single language. The skill can reason about mainstream toolchains such as npm, vite, vitest, cargo, tauri, pytest, dotnet, Go, Ruby, PHP, and browser automation helpers, while still keeping the cleanup policy conservative.
+The supported scope is broader than a single language. The skill can reason about mainstream toolchains such as npm, vite, vitest, cargo, tauri, trunk, hatch, pytest, jupyter, streamlit, dotnet, Kotlin, Scala, Go, Ruby, PHP, Elixir, and browser automation helpers, while still keeping the cleanup policy conservative.
 
 Safety remains the core design priority:
 

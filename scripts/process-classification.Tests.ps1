@@ -1163,6 +1163,172 @@ Describe 'Get-TemporaryProcessClassifications' {
     $result[0].Killable | Should Be $true
   }
 
+  It 'classifies workspace-scoped trunk direct processes as temporary dev tools' {
+    . $libraryPath
+
+    $processes = @(
+      [pscustomobject]@{
+        ProcessId = 126
+        ParentProcessId = 1
+        Name = 'trunk'
+        CommandLine = 'trunk serve --config /repo/Trunk.toml'
+      }
+    )
+
+    $result = @(Get-TemporaryProcessClassifications -Processes $processes -Workspace '/repo')
+
+    $result.Count | Should Be 1
+    $result[0].Category | Should Be 'dev-tool'
+    $result[0].Killable | Should Be $true
+  }
+
+  It 'classifies workspace-scoped hatch direct processes as temporary dev tools' {
+    . $libraryPath
+
+    $processes = @(
+      [pscustomobject]@{
+        ProcessId = 127
+        ParentProcessId = 1
+        Name = 'hatch'
+        CommandLine = 'hatch run pytest /repo/tests'
+      }
+    )
+
+    $result = @(Get-TemporaryProcessClassifications -Processes $processes -Workspace '/repo')
+
+    $result.Count | Should Be 1
+    $result[0].Category | Should Be 'dev-tool'
+    $result[0].Killable | Should Be $true
+  }
+
+  It 'classifies workspace-scoped streamlit direct processes as temporary dev tools' {
+    . $libraryPath
+
+    $processes = @(
+      [pscustomobject]@{
+        ProcessId = 128
+        ParentProcessId = 1
+        Name = 'streamlit'
+        CommandLine = 'streamlit run /repo/app.py'
+      }
+    )
+
+    $result = @(Get-TemporaryProcessClassifications -Processes $processes -Workspace '/repo')
+
+    $result.Count | Should Be 1
+    $result[0].Category | Should Be 'dev-tool'
+    $result[0].Killable | Should Be $true
+  }
+
+  It 'classifies workspace-scoped jupyter-lab direct processes as temporary dev tools' {
+    . $libraryPath
+
+    $processes = @(
+      [pscustomobject]@{
+        ProcessId = 129
+        ParentProcessId = 1
+        Name = 'jupyter-lab'
+        CommandLine = 'jupyter-lab --notebook-dir=/repo'
+      }
+    )
+
+    $result = @(Get-TemporaryProcessClassifications -Processes $processes -Workspace '/repo')
+
+    $result.Count | Should Be 1
+    $result[0].Category | Should Be 'dev-tool'
+    $result[0].Killable | Should Be $true
+  }
+
+  It 'classifies workspace-scoped kotlin direct processes as temporary dev tools' {
+    . $libraryPath
+
+    $processes = @(
+      [pscustomobject]@{
+        ProcessId = 130
+        ParentProcessId = 1
+        Name = 'kotlin'
+        CommandLine = 'kotlin /repo/scripts/dev.main.kts'
+      }
+    )
+
+    $result = @(Get-TemporaryProcessClassifications -Processes $processes -Workspace '/repo')
+
+    $result.Count | Should Be 1
+    $result[0].Category | Should Be 'dev-tool'
+    $result[0].Killable | Should Be $true
+  }
+
+  It 'classifies workspace-scoped scala-cli direct processes as temporary dev tools' {
+    . $libraryPath
+
+    $processes = @(
+      [pscustomobject]@{
+        ProcessId = 131
+        ParentProcessId = 1
+        Name = 'scala-cli'
+        CommandLine = 'scala-cli run /repo/src/Main.scala'
+      }
+    )
+
+    $result = @(Get-TemporaryProcessClassifications -Processes $processes -Workspace '/repo')
+
+    $result.Count | Should Be 1
+    $result[0].Category | Should Be 'dev-tool'
+    $result[0].Killable | Should Be $true
+  }
+
+  It 'classifies additional documented toolchains as temporary dev tools' -TestCases @(
+    @{
+      Name = 'bun'
+      ProcessId = 132
+      ProcessName = 'bun'
+      CommandLine = 'bun --cwd /repo run dev'
+    },
+    @{
+      Name = 'deno'
+      ProcessId = 133
+      ProcessName = 'deno'
+      CommandLine = 'deno task --cwd /repo dev'
+    },
+    @{
+      Name = 'bundle'
+      ProcessId = 134
+      ProcessName = 'bundle'
+      CommandLine = 'bundle exec rspec /repo/spec'
+    },
+    @{
+      Name = 'composer'
+      ProcessId = 135
+      ProcessName = 'composer'
+      CommandLine = 'composer run test --working-dir=/repo'
+    },
+    @{
+      Name = 'mix'
+      ProcessId = 136
+      ProcessName = 'mix'
+      CommandLine = 'mix phx.server --cd /repo'
+    }
+  ) {
+    param($Name, $ProcessId, $ProcessName, $CommandLine)
+
+    . $libraryPath
+
+    $processes = @(
+      [pscustomobject]@{
+        ProcessId = $ProcessId
+        ParentProcessId = 1
+        Name = $ProcessName
+        CommandLine = $CommandLine
+      }
+    )
+
+    $result = @(Get-TemporaryProcessClassifications -Processes $processes -Workspace '/repo')
+
+    $result.Count | Should Be 1
+    $result[0].Category | Should Be 'dev-tool'
+    $result[0].Killable | Should Be $true
+  }
+
   It 'does not classify a browser just because a devtools page is open' {
     . $libraryPath
 

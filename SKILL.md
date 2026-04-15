@@ -33,9 +33,9 @@ Common examples include:
 
 - JavaScript and TypeScript: `npm`, `pnpm`, `yarn`, `bun`, `vite`, `vitest`, `jest`, `webpack`, `rollup`, `next`, `nuxt`, `turbo`
 - Rust and native tooling: `cargo`, `rustc`, `tauri`, `trunk`
-- Python: `python`, `uv`, `pip`, `poetry`, `hatch`, `pytest`, `jupyter`, `streamlit`
+- Python: `python`, `uv`, `pip`, `pipenv`, `poetry`, `hatch`, `pytest`, `uvicorn`, `jupyter`, `streamlit`
 - JVM and .NET: `java`, `mvn`, `gradle`, `kotlin`, `scala`, `dotnet`
-- Other popular stacks: `go`, `ruby`, `bundle`, `rails`, `php`, `composer`, `artisan`, `elixir`, `mix`, `deno`
+- Other popular stacks: `go`, `ruby`, `bundle`, `rails`, `php`, `composer`, `artisan`, `elixir`, `mix`, `iex`, `rebar3`, `deno`
 - Browser automation and debugging: `chrome-devtools-mcp`, Playwright-style tooling, headless browsers, remote-debug launchers
 
 Coverage does not mean aggression. The safety rules still decide whether something is inspect-only, cleanup-now, or preserve.
@@ -47,6 +47,15 @@ Coverage does not mean aggression. The safety rules still decide whether somethi
 - `cleanup`: final sweep for clearly finished temporary process trees
 
 Prefer `inspect` when reuse is still plausible. Prefer `checkpoint-cleanup` when a step is clearly finished. Reserve full `cleanup` for the point where the remaining temporary tree is definitely no longer needed.
+
+## Practical Limits
+
+This package is still a pure skill, not a host-level plugin.
+
+- It can increase the chance that Codex reconsiders cleanup at the right checkpoints
+- It cannot install fixed callbacks, timers, or always-on hooks inside the Codex app
+- If implicit invocation does not happen in your environment, explicitly ask Codex to use `$codex-cleaning-temporary-processes`
+- Broader toolchain coverage never lowers the safety threshold for cleanup
 
 ## Safety Model
 

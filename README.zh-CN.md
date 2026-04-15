@@ -20,9 +20,9 @@ Codex Cleaning Temporary Processes 是一个公开的跨平台 skill，用来在
 
 - JavaScript / TypeScript：`npm`、`pnpm`、`yarn`、`bun`、`vite`、`vitest`、`jest`、`webpack`、`rollup`、`next`、`nuxt`、`turbo`
 - Rust 与原生工具链：`cargo`、`rustc`、`tauri`、`trunk`
-- Python：`python`、`uv`、`pip`、`poetry`、`hatch`、`pytest`
-- JVM 与 .NET：`java`、`mvn`、`gradle`、`dotnet`
-- 其他常见栈：`go`、`ruby`、`bundle`、`rails`、`php`、`composer`、`artisan`、`elixir`、`mix`、`deno`
+- Python：`python`、`uv`、`pip`、`pipenv`、`poetry`、`hatch`、`pytest`、`uvicorn`、`jupyter`、`streamlit`
+- JVM 与 .NET：`java`、`mvn`、`gradle`、`kotlin`、`scala`、`dotnet`
+- 其他常见栈：`go`、`ruby`、`bundle`、`rails`、`php`、`composer`、`artisan`、`elixir`、`mix`、`iex`、`rebar3`、`deno`
 - 浏览器自动化与远程调试：`chrome-devtools-mcp`、Playwright 风格工具、无头浏览器、远程调试启动链路
 
 覆盖范围广，不代表清理策略激进。最终是否清理仍然由安全规则决定。
@@ -46,6 +46,15 @@ Codex Cleaning Temporary Processes 是一个公开的跨平台 skill，用来在
 - 可能复用时，先用 `inspect`
 - 已结束检查点留下高置信度残留时，用 `checkpoint-cleanup`
 - 剩余临时进程树已经明确无用时，用 `cleanup`
+
+## 现实边界
+
+这个包依然是纯 skill，不是常驻后台插件。
+
+- 它能提升 Codex 在合适检查点重新考虑清理的概率
+- 它不能自己向 Codex 宿主注入固定 hook、定时器或常驻回调
+- 如果你的环境里隐式调用不够稳定，显式要求使用 `$codex-cleaning-temporary-processes` 仍然是诚实且安全的兜底方案
+- 覆盖更多工具链不代表放宽安全线；最终能不能清理，仍然要看归属证据和工作区证据
 
 ## 安全模型
 

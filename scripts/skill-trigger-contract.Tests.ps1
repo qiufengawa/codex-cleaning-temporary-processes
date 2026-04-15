@@ -58,6 +58,12 @@ Describe 'public skill trigger contract' {
     $readmeEnglish | Should Match 'vitest'
     $readmeEnglish | Should Match 'cargo'
     $readmeEnglish | Should Match 'tauri'
+    $readmeEnglish | Should Match 'trunk'
+    $readmeEnglish | Should Match 'hatch'
+    $readmeEnglish | Should Match 'jupyter'
+    $readmeEnglish | Should Match 'streamlit'
+    $readmeEnglish | Should Match 'kotlin'
+    $readmeEnglish | Should Match 'scala'
     $readmeEnglish | Should Not Match 'plugin-style'
     $readmeEnglish | Should Not Match '\.codex-plugin/plugin\.json'
     $readmeEnglish | Should Not Match 'hooks/'
@@ -66,6 +72,9 @@ Describe 'public skill trigger contract' {
     $projectIntroEnglish | Should Match 'best-effort'
     $projectIntroEnglish | Should Match 'checkpoint'
     $projectIntroEnglish | Should Match 'cross-platform'
+    $projectIntroEnglish | Should Match 'language'
+    $projectIntroEnglish | Should Match 'trunk'
+    $projectIntroEnglish | Should Match 'streamlit'
     $projectIntroEnglish | Should Not Match 'plugin-style'
   }
 
@@ -75,6 +84,12 @@ Describe 'public skill trigger contract' {
     $readmeChinese | Should Match ([regex]::Escape($implicitZh))
     $readmeChinese | Should Match ([regex]::Escape($checkpointZh))
     $readmeChinese | Should Match ([regex]::Escape($multiProjectIsolationZh))
+    $readmeChinese | Should Match 'trunk'
+    $readmeChinese | Should Match 'hatch'
+    $readmeChinese | Should Match 'jupyter'
+    $readmeChinese | Should Match 'streamlit'
+    $readmeChinese | Should Match 'kotlin'
+    $readmeChinese | Should Match 'scala'
     $readmeChinese | Should Not Match ([regex]::Escape($pluginStyleZh))
     $readmeChinese | Should Not Match '\.codex-plugin/plugin\.json'
     $readmeChinese | Should Not Match 'hooks/'
@@ -83,6 +98,8 @@ Describe 'public skill trigger contract' {
     $projectIntroChinese | Should Match ([regex]::Escape($bestEffortZh))
     $projectIntroChinese | Should Match ([regex]::Escape($checkpointZh))
     $projectIntroChinese | Should Match ([regex]::Escape($crossPlatformZh))
+    $projectIntroChinese | Should Match 'trunk'
+    $projectIntroChinese | Should Match 'streamlit'
     $projectIntroChinese | Should Not Match ([regex]::Escape($pluginStyleZh))
   }
 
