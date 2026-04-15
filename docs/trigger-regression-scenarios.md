@@ -14,7 +14,7 @@ These scenarios are the public trigger contract for when Codex should remember t
 - What happened: the session used `mcp__chrome_devtools__*`, `chrome-devtools-mcp`, Playwright-style tooling, or a browser launched with `--remote-debugging-port` or `--headless`.
 - Should the skill trigger automatically: yes.
 - When to trigger: after the DevTools or browser-debug step finishes, not only at end-of-task.
-- Expected mode: prefer `checkpoint-cleanup` for obvious launcher, watchdog, helper-shell, and remote-debug leftovers; use `inspect` first if reuse is still plausible.
+- Expected mode: prefer `checkpoint-cleanup` for obvious launcher, watchdog, helper-shell, and remote-debug leftovers; use `inspect` first if reuse is still plausible. If the same Codex conversation already proved ownership earlier, current-thread-owned explicit automation may still be reclaimable after the original launcher exits.
 
 ## Scenario 3: Repeated shell or tool helpers accumulated
 
@@ -33,5 +33,6 @@ These scenarios are the public trigger contract for when Codex should remember t
 ## Safety Reminder
 
 - Automatic triggering should stay conservative.
+- Current-thread ownership only narrows explicit automation cleanup; it does not widen cleanup for generic runtimes.
 - Do not clean plain interactive shells, ordinary user browsers, reusable dev servers, or ambiguous runtimes without strong task-specific evidence.
 - Final `cleanup` remains the end-of-task sweep, not the default response to every trigger.

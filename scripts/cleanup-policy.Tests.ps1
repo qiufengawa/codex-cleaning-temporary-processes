@@ -84,6 +84,26 @@ Describe 'Get-CleanupDecision' {
     $decision.Decision | Should Be 'cleanup-now'
   }
 
+  It 'marks pnpm install shells for cleanup during checkpoint cleanup' {
+    . $classificationLibraryPath
+    . $policyLibraryPath
+
+    $processes = @(
+      [pscustomobject]@{
+        ProcessId = 255
+        ParentProcessId = 1
+        Name = 'cmd.exe'
+        CommandLine = 'cmd.exe /c pnpm install --dir C:\Repo'
+      }
+    )
+
+    $record = @(Get-TemporaryProcessClassifications -Processes $processes -Workspace 'C:\Repo')[0]
+    $decision = Get-CleanupDecision -Record $record -Mode 'checkpoint-cleanup'
+
+    $decision.Decision | Should Be 'cleanup-now'
+    $decision.Reason | Should Be 'One-shot build or test command finished for this step'
+  }
+
   It 'keeps unowned DevTools MCP launcher shells as inspect-only during checkpoint cleanup' {
     . $classificationLibraryPath
     . $policyLibraryPath

@@ -38,7 +38,7 @@ $script:HighConfidenceShellPatterns = @(
 )
 
 $script:WorkspaceScopedShellPatterns = @(
-  "\b(npm|npx|pnpm|pnpx|yarn|bun|bunx)(\.cmd|\.exe)?\b.*\b(run|exec|dev|build|preview|test|start|serve|watch)\b",
+  "\b(npm|npx|pnpm|pnpx|yarn|bun|bunx)(\.cmd|\.exe)?\b.*\b(run|exec|dev|build|preview|test|start|serve|watch|install|ci)\b",
   "(?:^|[\s;&|`"])(?:vite|vitest)(?:\s+(dev|preview|test|run|watch)\b|\s+--[A-Za-z0-9-]+(?:[=\s][^\s`"]+)?|\s*(?:`"|$))",
   "\b(next|nuxt|astro|webpack|rollup|parcel|storybook|cypress|jest|turbo|nx|nest|remix|svelte-kit)\b.*\b(dev|build|preview|test|start|serve|watch|run|open)\b",
   "\b(tsx|ts-node|ts-node-dev|nodemon|vite-node)\b.*\b(watch|dev|start|serve|run)\b",
@@ -89,8 +89,8 @@ $script:WorkspaceScopedRuntimePatterns = @(
   "\b(cmake|ctest|meson|ninja|make)\b.*\b(test|build|check|run)\b"
 )
 $script:WorkspaceScopedDirectToolPatterns = @(
-  "\bnpm(\.cmd)?\b.*\b(run|exec|dev|build|preview|test|start|serve|watch)\b",
-  "\b(npx|pnpm|pnpx|yarn|bun|bunx)(\.cmd|\.exe)?\b.*\b(run|exec|dev|build|preview|test|start|serve|watch)\b",
+  "\bnpm(\.cmd)?\b.*\b(run|exec|dev|build|preview|test|start|serve|watch|install|ci)\b",
+  "\b(npx|pnpm|pnpx|yarn|bun|bunx)(\.cmd|\.exe)?\b.*\b(run|exec|dev|build|preview|test|start|serve|watch|install|ci)\b",
   "\b(vite|vitest)\b(?:\s|$)",
   "\b(next|nuxt|astro|webpack|rollup|parcel|storybook|cypress|jest|turbo|nx|nest|remix|svelte-kit)\b.*\b(dev|build|preview|test|start|serve|watch|run|open)\b",
   "\b(tsx|ts-node|ts-node-dev|nodemon|vite-node)\b.*\b(watch|dev|start|serve|run)\b",
@@ -323,6 +323,51 @@ function Test-TaskOwnershipEvidence {
   return $WorkspaceMatch -or $TaskOwnedAncestor
 }
 
+function Get-ThreadOwnershipIndex {
+  param([object[]]$ThreadOwnershipEntries)
+
+  $index = @{}
+  foreach ($entry in @($ThreadOwnershipEntries)) {
+    $processId = [int]$entry.ProcessId
+    if (-not $index.ContainsKey($processId)) {
+      $index[$processId] = New-Object 'System.Collections.Generic.List[object]'
+    }
+
+    $null = $index[$processId].Add($entry)
+  }
+
+  return $index
+}
+
+function Test-ThreadOwnedExplicitAutomation {
+  param(
+    [object]$Process,
+    [string]$Category,
+    [hashtable]$ThreadOwnershipIndex
+  )
+
+  if ($null -eq $Process -or $null -eq $ThreadOwnershipIndex) {
+    return $false
+  }
+
+  $processId = [int]$Process.ProcessId
+  if (-not $ThreadOwnershipIndex.ContainsKey($processId)) {
+    return $false
+  }
+
+  foreach ($entry in $ThreadOwnershipIndex[$processId]) {
+    if (
+      ([string]$entry.Category -eq $Category) -and
+      ([string]$entry.Name -eq [string]$Process.Name) -and
+      ([string]$entry.CommandLine -eq [string]$Process.CommandLine)
+    ) {
+      return $true
+    }
+  }
+
+  return $false
+}
+
 function New-ExplicitAutomationRecord {
   param(
     [object]$Process,
@@ -343,6 +388,7 @@ function Classify-TemporaryProcess {
     [object]$Process,
     [hashtable]$ProcessById,
     [string]$WorkspacePattern,
+    [hashtable]$ThreadOwnershipIndex = $null,
     [int]$CurrentProcessId = $PID
   )
 
@@ -367,7 +413,15 @@ function Classify-TemporaryProcess {
     }
 
     if ((Test-ExplicitAutomationShellCommandLine -CommandLine $commandLine) -and $commandLine -notmatch "ConvertFrom-Json") {
-      return New-ExplicitAutomationRecord -Process $Process -Category "tool-shell" -TaskOwned $taskOwned -OwnedReason "Task-owned shell for explicit automation work"
+      $threadOwned = Test-ThreadOwnedExplicitAutomation -Process $Process -Category "tool-shell" -ThreadOwnershipIndex $ThreadOwnershipIndex
+      $explicitAutomationOwned = $taskOwned -or $threadOwned
+      $ownedReason = if ($threadOwned -and -not $taskOwned) {
+        "Current-thread shell for explicit automation work"
+      } else {
+        "Task-owned shell for explicit automation work"
+      }
+
+      return New-ExplicitAutomationRecord -Process $Process -Category "tool-shell" -TaskOwned $explicitAutomationOwned -OwnedReason $ownedReason
     }
 
     if (
@@ -382,7 +436,15 @@ function Classify-TemporaryProcess {
 
   if (Test-NamePatternList -Value $name -Patterns $script:CmdShellNamePatterns) {
     if (Test-ExplicitAutomationShellCommandLine -CommandLine $commandLine) {
-      return New-ExplicitAutomationRecord -Process $Process -Category "tool-shell" -TaskOwned $taskOwned -OwnedReason "Task-owned shell for explicit automation work"
+      $threadOwned = Test-ThreadOwnedExplicitAutomation -Process $Process -Category "tool-shell" -ThreadOwnershipIndex $ThreadOwnershipIndex
+      $explicitAutomationOwned = $taskOwned -or $threadOwned
+      $ownedReason = if ($threadOwned -and -not $taskOwned) {
+        "Current-thread shell for explicit automation work"
+      } else {
+        "Task-owned shell for explicit automation work"
+      }
+
+      return New-ExplicitAutomationRecord -Process $Process -Category "tool-shell" -TaskOwned $explicitAutomationOwned -OwnedReason $ownedReason
     }
 
     if (Test-TemporaryShellCommandLine -CommandLine $commandLine -WorkspaceMatch $workspaceMatch -TaskOwnedAncestor $taskOwnedAncestor) {
@@ -394,15 +456,39 @@ function Classify-TemporaryProcess {
 
   if (Test-NamePatternList -Value $name -Patterns $script:NodeNamePatterns) {
     if ($commandLine -match "telemetry\\watchdog\\main\.js") {
-      return New-ExplicitAutomationRecord -Process $Process -Category "devtools-watchdog" -TaskOwned $taskOwned -OwnedReason "Current-task DevTools MCP watchdog"
+      $threadOwned = Test-ThreadOwnedExplicitAutomation -Process $Process -Category "devtools-watchdog" -ThreadOwnershipIndex $ThreadOwnershipIndex
+      $explicitAutomationOwned = $taskOwned -or $threadOwned
+      $ownedReason = if ($threadOwned -and -not $taskOwned) {
+        "Current-thread DevTools MCP watchdog"
+      } else {
+        "Current-task DevTools MCP watchdog"
+      }
+
+      return New-ExplicitAutomationRecord -Process $Process -Category "devtools-watchdog" -TaskOwned $explicitAutomationOwned -OwnedReason $ownedReason
     }
 
     if ($commandLine -match "npx-cli\.js.*chrome-devtools-mcp@latest") {
-      return New-ExplicitAutomationRecord -Process $Process -Category "devtools-launcher" -TaskOwned $taskOwned -OwnedReason "Current-task DevTools MCP launcher"
+      $threadOwned = Test-ThreadOwnedExplicitAutomation -Process $Process -Category "devtools-launcher" -ThreadOwnershipIndex $ThreadOwnershipIndex
+      $explicitAutomationOwned = $taskOwned -or $threadOwned
+      $ownedReason = if ($threadOwned -and -not $taskOwned) {
+        "Current-thread DevTools MCP launcher"
+      } else {
+        "Current-task DevTools MCP launcher"
+      }
+
+      return New-ExplicitAutomationRecord -Process $Process -Category "devtools-launcher" -TaskOwned $explicitAutomationOwned -OwnedReason $ownedReason
     }
 
     if ($commandLine -match "chrome-devtools-mcp") {
-      return New-ExplicitAutomationRecord -Process $Process -Category "devtools-mcp" -TaskOwned $taskOwned -OwnedReason "Current-task DevTools MCP service"
+      $threadOwned = Test-ThreadOwnedExplicitAutomation -Process $Process -Category "devtools-mcp" -ThreadOwnershipIndex $ThreadOwnershipIndex
+      $explicitAutomationOwned = $taskOwned -or $threadOwned
+      $ownedReason = if ($threadOwned -and -not $taskOwned) {
+        "Current-thread DevTools MCP service"
+      } else {
+        "Current-task DevTools MCP service"
+      }
+
+      return New-ExplicitAutomationRecord -Process $Process -Category "devtools-mcp" -TaskOwned $explicitAutomationOwned -OwnedReason $ownedReason
     }
 
     if ($taskOwned -and (Test-PatternList -Value $commandLine -Patterns $script:WorkspaceScopedNodePatterns)) {
@@ -410,7 +496,15 @@ function Classify-TemporaryProcess {
     }
 
     if ($commandLine -match $script:BrowserAutomationPattern) {
-      return New-ExplicitAutomationRecord -Process $Process -Category "browser-automation" -TaskOwned $taskOwned -OwnedReason "Current-task browser automation helper"
+      $threadOwned = Test-ThreadOwnedExplicitAutomation -Process $Process -Category "browser-automation" -ThreadOwnershipIndex $ThreadOwnershipIndex
+      $explicitAutomationOwned = $taskOwned -or $threadOwned
+      $ownedReason = if ($threadOwned -and -not $taskOwned) {
+        "Current-thread browser automation helper"
+      } else {
+        "Current-task browser automation helper"
+      }
+
+      return New-ExplicitAutomationRecord -Process $Process -Category "browser-automation" -TaskOwned $explicitAutomationOwned -OwnedReason $ownedReason
     }
 
     return $null
@@ -434,7 +528,15 @@ function Classify-TemporaryProcess {
 
   if (Test-NamePatternList -Value $name -Patterns $script:BrowserNamePatterns) {
     if ($commandLine -match $script:BrowserDebugPattern) {
-      return New-ExplicitAutomationRecord -Process $Process -Category "browser-debug" -TaskOwned $taskOwned -OwnedReason "Current-task browser automation or remote-debug session"
+      $threadOwned = Test-ThreadOwnedExplicitAutomation -Process $Process -Category "browser-debug" -ThreadOwnershipIndex $ThreadOwnershipIndex
+      $explicitAutomationOwned = $taskOwned -or $threadOwned
+      $ownedReason = if ($threadOwned -and -not $taskOwned) {
+        "Current-thread browser automation or remote-debug session"
+      } else {
+        "Current-task browser automation or remote-debug session"
+      }
+
+      return New-ExplicitAutomationRecord -Process $Process -Category "browser-debug" -TaskOwned $explicitAutomationOwned -OwnedReason $ownedReason
     }
 
     return $null
@@ -447,6 +549,7 @@ function Get-TemporaryProcessClassifications {
   param(
     [object[]]$Processes,
     [string]$Workspace,
+    [object[]]$ThreadOwnershipEntries = @(),
     [int]$CurrentProcessId = $PID
   )
 
@@ -456,9 +559,10 @@ function Get-TemporaryProcessClassifications {
   }
 
   $workspacePattern = Get-WorkspacePattern -Workspace $Workspace
+  $threadOwnershipIndex = Get-ThreadOwnershipIndex -ThreadOwnershipEntries $ThreadOwnershipEntries
 
   $classified = foreach ($process in $Processes) {
-    $record = Classify-TemporaryProcess -Process $process -ProcessById $processById -WorkspacePattern $workspacePattern -CurrentProcessId $CurrentProcessId
+    $record = Classify-TemporaryProcess -Process $process -ProcessById $processById -WorkspacePattern $workspacePattern -ThreadOwnershipIndex $threadOwnershipIndex -CurrentProcessId $CurrentProcessId
     if ($null -ne $record) {
       $record
     }

@@ -12,14 +12,18 @@ $ErrorActionPreference = "Stop"
 . (Join-Path $PSScriptRoot "process-classification.ps1")
 . (Join-Path $PSScriptRoot "cleanup-policy.ps1")
 . (Join-Path $PSScriptRoot "process-inventory.ps1")
+. (Join-Path $PSScriptRoot "thread-ownership-ledger.ps1")
 
 function Get-ClassifiedTemporaryProcessSnapshot {
   param(
     [string]$Workspace,
+    [string]$ThreadId,
+    [datetime]$CurrentTimeUtc = [datetime]::UtcNow,
     [int]$CurrentProcessId = $PID
   )
 
   $processes = @(Get-TemporaryProcessInventory)
+  $threadOwnershipEntries = @(Get-ActiveThreadOwnershipEntries -ThreadId $ThreadId -Processes $processes -CurrentTimeUtc $CurrentTimeUtc)
   $childrenByParent = @{}
 
   foreach ($process in $processes) {
@@ -31,7 +35,7 @@ function Get-ClassifiedTemporaryProcessSnapshot {
     $null = $childrenByParent[$parentId].Add([int]$process.ProcessId)
   }
 
-  $classified = Get-TemporaryProcessClassifications -Processes $processes -Workspace $Workspace -CurrentProcessId $CurrentProcessId |
+  $classified = Get-TemporaryProcessClassifications -Processes $processes -Workspace $Workspace -ThreadOwnershipEntries $threadOwnershipEntries -CurrentProcessId $CurrentProcessId |
     ForEach-Object {
       $decision = Get-CleanupDecision -Record $_ -Mode $Mode
       $_ | Add-Member -NotePropertyName Decision -NotePropertyValue $decision.Decision -Force
@@ -42,6 +46,7 @@ function Get-ClassifiedTemporaryProcessSnapshot {
   [pscustomobject]@{
     Processes        = @($processes)
     ChildrenByParent = $childrenByParent
+    ThreadOwnership  = @($threadOwnershipEntries)
     Classified       = @($classified)
   }
 }
@@ -93,7 +98,9 @@ function Get-RootRecordCount {
   ).Count
 }
 
-$snapshot = Get-ClassifiedTemporaryProcessSnapshot -Workspace $Workspace -CurrentProcessId $PID
+$threadId = Get-CurrentCodexThreadId
+$snapshotTimeUtc = [datetime]::UtcNow
+$snapshot = Get-ClassifiedTemporaryProcessSnapshot -Workspace $Workspace -ThreadId $threadId -CurrentTimeUtc $snapshotTimeUtc -CurrentProcessId $PID
 $classified = @($snapshot.Classified)
 
 if ($Mode -in @("cleanup", "checkpoint-cleanup")) {
@@ -121,7 +128,7 @@ if ($Mode -in @("cleanup", "checkpoint-cleanup")) {
     }
   }
 
-  $postSnapshot = Get-ClassifiedTemporaryProcessSnapshot -Workspace $Workspace -CurrentProcessId $PID
+  $postSnapshot = Get-ClassifiedTemporaryProcessSnapshot -Workspace $Workspace -ThreadId $threadId -CurrentTimeUtc ([datetime]::UtcNow) -CurrentProcessId $PID
   $postClassified = @($postSnapshot.Classified)
   $postProcessIds = New-Object 'System.Collections.Generic.HashSet[int]'
   foreach ($process in $postSnapshot.Processes) {
@@ -154,6 +161,8 @@ if ($Mode -in @("cleanup", "checkpoint-cleanup")) {
     failedIds     = @($failedIds)
     processes     = @($postClassified)
   }
+
+  $null = Update-ThreadOwnershipEntries -ThreadId $threadId -ExistingEntries @($postSnapshot.ThreadOwnership) -Processes @($postSnapshot.Processes) -ClassifiedRecords @($postClassified) -Workspace $Workspace -CurrentTimeUtc ([datetime]::UtcNow)
 } else {
   $output = [pscustomobject]@{
     mode          = $Mode
@@ -167,6 +176,8 @@ if ($Mode -in @("cleanup", "checkpoint-cleanup")) {
     }
     processes     = @($classified)
   }
+
+  $null = Update-ThreadOwnershipEntries -ThreadId $threadId -ExistingEntries @($snapshot.ThreadOwnership) -Processes @($snapshot.Processes) -ClassifiedRecords @($classified) -Workspace $Workspace -CurrentTimeUtc ([datetime]::UtcNow)
 }
 
 if ($AsJson) {

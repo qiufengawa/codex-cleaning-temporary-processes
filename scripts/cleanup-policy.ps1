@@ -38,6 +38,8 @@ $script:CheckpointOneShotMarkers = @(
   "\btest\b",
   "\bbuild\b",
   "\bcheck\b",
+  "\binstall\b",
+  "\bci\b",
   "\bpublish\b",
   "\bpackage\b",
   "\blint\b",

@@ -14,7 +14,7 @@
 - 发生了什么：会话中使用了 `mcp__chrome_devtools__*`、`chrome-devtools-mcp`、Playwright 风格工具，或者带 `--remote-debugging-port` / `--headless` 启动的浏览器。
 - 是否应该自动触发：是。
 - 何时触发：在 DevTools 或浏览器调试步骤结束之后触发，而不是只等任务最终结束。
-- 预期模式：对于明显的 launcher、watchdog、helper shell 和远程调试残留，优先使用 `checkpoint-cleanup`；如果仍有复用可能，则先用 `inspect`。
+- 预期模式：对于明显的 launcher、watchdog、helper shell 和远程调试残留，优先使用 `checkpoint-cleanup`；如果仍有复用可能，则先用 `inspect`。如果同一个 Codex 对话之前已经证明过归属，那么即使原始 launcher 已经退出，带有当前线程归属的显式 automation 仍然可能被后续步骤回收。
 
 ## 场景 3：重复 shell 或工具辅助进程已经累积
 
@@ -33,5 +33,6 @@
 ## 安全提醒
 
 - 自动触发必须继续保持保守。
+- 当前线程归属只会收窄显式 automation 的回收范围，不会放宽普通 runtime 的清理范围。
 - 不要在缺少强任务证据时清理普通交互 shell、普通用户浏览器、可复用开发服务或存在歧义的运行时。
 - 最终的 `cleanup` 仍然是任务尾声使用的总清扫，而不是每次触发都默认执行的动作。

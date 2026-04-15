@@ -12,6 +12,7 @@ The operating model stays conservative:
 - clean only high-confidence leftovers during checkpoint cleanup
 - allow conservative ownership inheritance only from workspace-backed task ancestors with known dev, test, build, serve, or watch markers
 - keep explicit automation inspect-only when current-workspace or current-task ownership is not yet proven
+- let the same Codex conversation keep reclaiming current-thread-owned explicit automation after it already proved ownership once, without broadening cleanup for generic runtimes
 - preserve active Codex shells, ordinary user apps, and likely reusable dev services
 - reserve the final sweep for temporary process trees that are definitely no longer needed
 

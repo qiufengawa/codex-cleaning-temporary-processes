@@ -96,6 +96,35 @@ Describe 'Get-TemporaryProcessClassifications' {
     $result[0].Killable | Should Be $true
   }
 
+  It 'classifies thread-owned DevTools MCP node processes as killable without fresh workspace evidence' {
+    . $libraryPath
+
+    $processes = @(
+      [pscustomobject]@{
+        ProcessId = 158
+        ParentProcessId = 1
+        Name = 'node.exe'
+        CommandLine = 'node C:\Temp\npm-cache\_npx\pkg\chrome-devtools-mcp\build\src\bin\chrome-devtools-mcp.js'
+      }
+    )
+    $threadOwnershipEntries = @(
+      [pscustomobject]@{
+        ProcessId = 158
+        Name = 'node.exe'
+        CommandLine = 'node C:\Temp\npm-cache\_npx\pkg\chrome-devtools-mcp\build\src\bin\chrome-devtools-mcp.js'
+        Category = 'devtools-mcp'
+        Workspace = 'C:\Repo'
+        ObservedAtUtc = '2026-04-15T14:00:00Z'
+      }
+    )
+
+    $result = @(Get-TemporaryProcessClassifications -Processes $processes -ThreadOwnershipEntries $threadOwnershipEntries)
+
+    $result.Count | Should Be 1
+    $result[0].Category | Should Be 'devtools-mcp'
+    $result[0].Killable | Should Be $true
+  }
+
   It 'classifies unowned DevTools MCP watchdog processes as inspect-only candidates' {
     . $libraryPath
 
@@ -174,6 +203,25 @@ Describe 'Get-TemporaryProcessClassifications' {
         ParentProcessId = 1
         Name = 'cmd.exe'
         CommandLine = 'cmd.exe /c pnpm dev --dir C:\Repo'
+      }
+    )
+
+    $result = @(Get-TemporaryProcessClassifications -Processes $processes -Workspace 'C:\Repo')
+
+    $result.Count | Should Be 1
+    $result[0].Category | Should Be 'tool-shell'
+    $result[0].Killable | Should Be $true
+  }
+
+  It 'classifies workspace-scoped pnpm install shells as temporary tool shells' {
+    . $libraryPath
+
+    $processes = @(
+      [pscustomobject]@{
+        ProcessId = 160
+        ParentProcessId = 1
+        Name = 'cmd.exe'
+        CommandLine = 'cmd.exe /c pnpm install --dir C:\Repo'
       }
     )
 
@@ -270,6 +318,33 @@ Describe 'Get-TemporaryProcessClassifications' {
     $result.Count | Should Be 1
     $result[0].Category | Should Be 'tool-shell'
     $result[0].Killable | Should Be $true
+  }
+
+  It 'does not let thread ownership make a generic runtime killable' {
+    . $libraryPath
+
+    $processes = @(
+      [pscustomobject]@{
+        ProcessId = 159
+        ParentProcessId = 1
+        Name = 'python.exe'
+        CommandLine = 'python -m uvicorn app.main:app --reload'
+      }
+    )
+    $threadOwnershipEntries = @(
+      [pscustomobject]@{
+        ProcessId = 159
+        Name = 'python.exe'
+        CommandLine = 'python -m uvicorn app.main:app --reload'
+        Category = 'dev-tool'
+        Workspace = 'C:\Repo'
+        ObservedAtUtc = '2026-04-15T14:05:00Z'
+      }
+    )
+
+    $result = @(Get-TemporaryProcessClassifications -Processes $processes -ThreadOwnershipEntries $threadOwnershipEntries)
+
+    $result.Count | Should Be 0
   }
 
   It 'classifies workspace-scoped next dev node processes as temporary dev tools' {

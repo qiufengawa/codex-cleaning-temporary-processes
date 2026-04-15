@@ -5,7 +5,9 @@ function New-CleanupEntrypointHarness {
     [string]$HarnessRoot,
     [object[]]$PreCleanupProcesses,
     [object[]]$PostCleanupProcesses,
-    [int[]]$FailStopIds
+    [int[]]$FailStopIds,
+    [object[]]$ThreadOwnershipEntries = @(),
+    [int[]]$ThreadOwnedPromotionIds = @()
   )
 
   $null = New-Item -ItemType Directory -Path $HarnessRoot -Force
@@ -15,6 +17,8 @@ function New-CleanupEntrypointHarness {
   $postCleanupJson = $PostCleanupProcesses | ConvertTo-Json -Depth 6 -Compress
   $presentProcessIdsJson = @($PreCleanupProcesses | ForEach-Object { [int]$_.ProcessId }) | ConvertTo-Json -Compress
   $failStopIdsJson = @($FailStopIds) | ConvertTo-Json -Compress
+  $threadOwnershipJson = @($ThreadOwnershipEntries) | ConvertTo-Json -Depth 6 -Compress
+  $threadOwnedPromotionIdsJson = @($ThreadOwnedPromotionIds) | ConvertTo-Json -Compress
 
   $inventoryStub = @"
 Set-StrictMode -Version Latest
@@ -77,17 +81,34 @@ function Get-TemporaryProcessClassifications {
   param(
     [object[]]`$Processes,
     [string]`$Workspace,
-    [int]`$CurrentProcessId
+    [int]`$CurrentProcessId,
+    [object[]]`$ThreadOwnershipEntries
   )
 
+  `$threadOwnedIds = @()
+  if (`$null -ne `$ThreadOwnershipEntries) {
+    `$threadOwnedIds = @(`$ThreadOwnershipEntries | ForEach-Object { [int]`$_.ProcessId })
+  }
+  `$promotionIds = @((ConvertFrom-Json @'
+$threadOwnedPromotionIdsJson
+'@))
+
   return @(`$Processes | ForEach-Object {
+    `$killable = [bool]`$_.Killable
+    `$desiredDecision = [string]`$_.DesiredDecision
+
+    if ((`$promotionIds -contains [int]`$_.ProcessId) -and (`$threadOwnedIds -contains [int]`$_.ProcessId)) {
+      `$killable = `$true
+      `$desiredDecision = 'cleanup-now'
+    }
+
     [pscustomobject]@{
       ProcessId       = [int]`$_.ProcessId
       ParentProcessId = [int]`$_.ParentProcessId
       Name            = [string]`$_.Name
       CommandLine     = [string]`$_.CommandLine
-      Killable        = [bool]`$_.Killable
-      DesiredDecision = [string]`$_.DesiredDecision
+      Killable        = `$killable
+      DesiredDecision = `$desiredDecision
       DecisionReason  = [string]`$_.DecisionReason
     }
   })
@@ -110,9 +131,49 @@ function Get-CleanupDecision {
 }
 "@
 
+  $ledgerStub = @"
+Set-StrictMode -Version Latest
+
+`$parsedThreadOwnershipEntries = ConvertFrom-Json @'
+$threadOwnershipJson
+'@
+`$script:ThreadOwnershipEntries = @()
+if (`$null -ne `$parsedThreadOwnershipEntries) {
+  `$script:ThreadOwnershipEntries = @(`$parsedThreadOwnershipEntries | ForEach-Object { `$_ })
+}
+
+function Get-CurrentCodexThreadId {
+  return 'thread-test'
+}
+
+function Get-ActiveThreadOwnershipEntries {
+  param(
+    [string]`$ThreadId,
+    [object[]]`$Processes,
+    [datetime]`$CurrentTimeUtc
+  )
+
+  return @(`$script:ThreadOwnershipEntries | ForEach-Object { `$_ })
+}
+
+function Update-ThreadOwnershipEntries {
+  param(
+    [string]`$ThreadId,
+    [object[]]`$ExistingEntries,
+    [object[]]`$Processes,
+    [object[]]`$ClassifiedRecords,
+    [string]`$Workspace,
+    [datetime]`$CurrentTimeUtc
+  )
+
+  return @(`$ExistingEntries)
+}
+"@
+
   Set-Content -LiteralPath (Join-Path $HarnessRoot 'process-inventory.ps1') -Value $inventoryStub
   Set-Content -LiteralPath (Join-Path $HarnessRoot 'process-classification.ps1') -Value $classificationStub
   Set-Content -LiteralPath (Join-Path $HarnessRoot 'cleanup-policy.ps1') -Value $policyStub
+  Set-Content -LiteralPath (Join-Path $HarnessRoot 'thread-ownership-ledger.ps1') -Value $ledgerStub
 
   return Join-Path $HarnessRoot 'cleanup-temporary-processes.ps1'
 }
@@ -285,5 +346,40 @@ Describe 'cleanup-temporary-processes entrypoint' {
     @($output.killedIds) | Should Be @(101)
     $output.failedCount | Should Be 0
     @($output.processes | ForEach-Object { [int]$_.ProcessId }) | Should Be @(301)
+  }
+
+  It 'passes current-thread ownership entries into classification before counting killable roots' {
+    $preCleanupProcesses = @(
+      [pscustomobject]@{
+        ProcessId = 401
+        ParentProcessId = 1
+        Name = 'node'
+        CommandLine = 'node temp-devtools.js'
+        Killable = $false
+        DesiredDecision = 'inspect-only'
+        DecisionReason = 'explicit automation lacks current-task ownership evidence'
+      }
+    )
+
+    $scriptUnderTest = New-CleanupEntrypointHarness `
+      -HarnessRoot (Join-Path $TestDrive 'cleanup-entrypoint-thread-ownership') `
+      -PreCleanupProcesses $preCleanupProcesses `
+      -PostCleanupProcesses $preCleanupProcesses `
+      -FailStopIds @() `
+      -ThreadOwnershipEntries @(
+        [pscustomobject]@{
+          ProcessId = 401
+          Name = 'node'
+          CommandLine = 'node temp-devtools.js'
+          Category = 'devtools-mcp'
+          Workspace = 'C:\Repo'
+          ObservedAtUtc = '2026-04-15T14:00:00Z'
+        }
+      ) `
+      -ThreadOwnedPromotionIds @(401)
+
+    $output = & $scriptUnderTest -Mode inspect -AsJson | ConvertFrom-Json
+
+    $output.killableRoots | Should Be 1
   }
 }

@@ -23,6 +23,7 @@
 - Windows：默认自带 PowerShell
 - macOS / Linux：需要安装 PowerShell 7，并保证 `pwsh` 可用
 - 如果你的检出环境不会保留可执行位，可以直接通过 `bash` 调用 Unix wrapper
+- 如果 Codex 能在 shell 环境里暴露 `CODEX_THREAD_ID`，当前线程显式 automation 回收会更可靠；如果没有这个线程 id，skill 会自动退回到只依赖工作区和当前任务证据
 
 ## 生态覆盖
 
@@ -60,6 +61,8 @@
 - 优先传入 `-Workspace`，让命令行可以和当前仓库或项目路径进行匹配
 - 相对路径启动的子进程，只有在父进程或祖先进程已经同时具备工作区证据以及明确的 dev、test、build、serve、watch 标记时，才会继承当前任务归属
 - 显式 automation 和远程调试进程，只有在当前工作区或当前任务归属证据足够强时才会进入可清理范围，否则保持 `inspect-only`
+- 本地的“当前线程归属账本”可以让同一个 Codex 对话在先前已经证明归属之后，继续回收自己的显式 automation，即使原始 launcher shell 之后已经退出
+- 当前线程归属不会单独把普通 runtime 或普通开发工具放宽成可清理目标
 - 仅仅因为进程链路挂在 Codex shell 下面，并不会自动变成可杀目标
 - 只要证据不够强或者存在歧义，就保持 `inspect-only`，甚至直接忽略
 
@@ -89,6 +92,7 @@
 - 会保留当前 Codex shell 和 Codex helper shell
 - 会保留没有自动化或远程调试标记的普通浏览器
 - 如果无法证明属于当前任务，也会保留 DevTools MCP、浏览器自动化和远程调试会话
+- 对于同一个 Codex 对话先前已经证明归属的显式 automation，后续步骤仍然可以通过当前线程归属继续回收
 - 当证据不够强时，会保留进程而不是强行清理
 - 在 checkpoint 阶段，会把可能还要复用的开发服务保留为 `inspect-only`
 - 只有在高置信度且当前步骤已经不再需要时，才会清理对应进程树
@@ -108,6 +112,7 @@ Checkpoint 清理主要面向这些对象：
 
 - 带工作区归属的 dev、test、build、serve、runtime 进程，必须匹配当前工作区或当前任务祖先进程。
 - DevTools MCP、Playwright 风格 helper、远程调试浏览器这类显式 automation，如果还不能证明属于当前任务，就保持 `inspect-only`。
+- 当前线程归属只用于“同一个 Codex 对话已经证明归属”的显式 automation 兜底，不代表同工作区下可以宽泛清理所有对象。
 - 仅仅因为同属 Codex 进程链路，并不意味着一个项目可以清理另一个项目的进程树。
 
 ## 它不会做什么
@@ -116,6 +121,7 @@ Checkpoint 清理主要面向这些对象：
 - 不会清理没有自动化标记的普通用户浏览器
 - 不会因为进程名叫 `node`、`python`、`java` 之类，就直接结束它
 - 如果还不能建立当前任务归属，也不会去清理其他工作区或其他 Codex 对话留下的 DevTools MCP、浏览器自动化或远程调试会话
+- 不会只因为“当前线程归属”存在，就去结束普通的 dev、test、build 或 runtime 进程
 - 不会把“挂在 Codex shell 下面”本身当成当前任务归属的充分证据
 - 当证据不足时不会强行清理，而是保留在 `inspect-only`
 - 直接浏览器进程匹配当前主要覆盖 Chromium / Edge 家族的远程调试会话；非 Chromium 浏览器自动化更多依赖 helper 或 wrapper 进程来识别
@@ -152,12 +158,15 @@ Checkpoint 清理主要面向这些对象：
 - `scripts/process-classification.ps1`：进程分类规则
 - `scripts/cleanup-policy.ps1`：清理决策策略
 - `scripts/cleanup-temporary-processes.ps1`：统一的检查与清理入口
+- `scripts/thread-ownership-ledger.ps1`：用于显式 automation 回收的本地“当前线程归属账本”
 - `scripts/cleanup-temporary-processes.sh`：macOS / Linux shell wrapper
 - `scripts/*.Tests.ps1`：覆盖采集、分类、策略和入口行为的 Pester 测试
 - `docs/project-introduction.md`：英文项目介绍
 - `docs/project-introduction.zh-CN.md`：中文项目介绍
 - `docs/trigger-regression-scenarios.md`：英文触发时机场景
 - `docs/trigger-regression-scenarios.zh-CN.md`：中文触发时机场景
+
+当前线程归属状态属于本地运行时数据，不会包含在公开包里。启用时，默认写到 `$CODEX_HOME/state/codex-cleaning-temporary-processes/thread-ownership/`；如果 `CODEX_THREAD_ID` 不可用，脚本就不会启用这层优化，而是继续只依赖工作区和当前任务证据。
 
 ## 安装方式
 
@@ -199,6 +208,7 @@ powershell -ExecutionPolicy Bypass -File "$env:CODEX_HOME\skills\codex-cleaning-
 - 如果一个长任务始终停留在同一个 assistant 回合里，应该在已结束的步骤之间请求 checkpoint cleanup，而不是只等最终回答。
 - 如果下一步可能还要复用某个进程，先让 Codex 跑 `inspect`，不要直接强制清理。
 - 如果某个进程没有被清理，可能是因为缺少工作区证据、自动化标记或其他高置信度归属信号，这通常是有意保守保留下来的结果。
+- 如果某些已经脱离 launcher 的 DevTools 或浏览器调试辅助进程本来就属于当前这个 Codex 对话，后续一次检查仍然可能通过“当前线程归属”把它们回收掉。
 - 如果同时有多个 Codex 对话或多个项目在运行，无法证明属于当前任务的 DevTools 或浏览器调试残留会继续保持 `inspect-only`，这是为了避免跨项目误杀。
 
 ## 测试
