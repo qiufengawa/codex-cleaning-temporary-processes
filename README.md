@@ -1,18 +1,42 @@
 # Codex Cleaning Temporary Processes
 
-[中文说明](./README.zh-CN.md)
+[Chinese](./README.zh-CN.md)
 
 Safety-first Codex skill for Windows process hygiene. It helps inspect and clean temporary development processes after tool-driven work without killing the active Codex shell, ordinary user apps, or ambiguous long-lived services.
 
-## Why This Skill Exists
+## Purpose
 
 Long Codex sessions can leave behind temporary shells, package-manager commands, browser-debug helpers, DevTools MCP services, test runners, and workspace-owned runtimes. Waiting until the very end of a large task can cause unnecessary buildup.
+
+This skill exists to give Codex a safe, reusable workflow for Windows process hygiene:
+
+- prevent long tasks from accumulating already-finished temporary processes
+- reclaim high-confidence leftovers earlier, not only at final task completion
+- preserve reusable dev servers, interactive shells, and normal user applications
+
+## Risks
+
+Process cleanup is useful, but it becomes dangerous when the rules are too broad. The main risks are:
+
+- killing the active Codex shell or Codex helper shells
+- killing ordinary browsers or user-owned runtimes that happen to be open
+- killing long-lived dev services that the next step still needs
+- overfitting cleanup rules to one private project and leaking private names or paths
+
+Because this repository is public, the design is intentionally conservative and the examples are sanitized.
+
+## Solution
 
 This skill adds a checkpoint cleanup workflow:
 
 - `inspect` to classify candidates and protected processes
 - `checkpoint-cleanup` to reclaim only high-confidence leftovers after a risky step finishes
 - `cleanup` to perform a final sweep for remaining killable temporary process trees
+
+The solution uses two layers:
+
+- classification decides what kind of process Codex is looking at
+- cleanup policy decides whether the current mode should preserve, inspect, or clean it now
 
 ## Safety Model
 
@@ -27,9 +51,9 @@ This repository is intended for public use and keeps the cleanup policy intentio
 Checkpoint cleanup only targets:
 
 - DevTools MCP services, launchers, and watchdogs
-- Explicit browser automation or remote-debug sessions
-- One-shot shells and runtimes that clearly belong to the finished step
-- High-confidence wrapper shells that explicitly launched automation helpers such as `chrome-devtools-mcp`, `playwright`, or `--remote-debugging-port`
+- explicit browser automation or remote-debug sessions
+- one-shot shells and runtimes that clearly belong to the finished step
+- high-confidence wrapper shells that explicitly launched automation helpers such as `chrome-devtools-mcp`, `playwright`, or `--remote-debugging-port`
 
 Long-lived dev servers such as `dev`, `serve`, `preview`, `watch`, `runserver`, or `start` remain `inspect-only` during checkpoint cleanup.
 
