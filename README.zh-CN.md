@@ -2,70 +2,60 @@
 
 [English](./README.md)
 
-这是一个面向 Windows 的安全优先 Codex skill，用来管理开发过程中的临时进程。它会在工具驱动的工作结束后，帮助你检查并清理临时 shell、测试进程、浏览器调试辅助进程和工作区相关运行时，同时避免误杀当前 Codex 会话、普通用户应用和含糊不清的长驻服务。
+这是一个面向 Windows 的安全优先 Codex skill，用来在工具驱动的开发任务后检查并清理临时进程，同时避免误伤当前 Codex shell、普通用户应用和证据不足的长驻服务。
 
-## 作用
+## 概览
 
-在较长的 Codex 任务里，`npm`、`vite`、`vitest`、`cargo`、`tauri`、浏览器调试工具、DevTools MCP 之类的步骤，往往会留下额外的 shell、辅助进程和运行时。如果等到整个大任务结束才统一处理，累积会越来越重。
+在 Windows 开发会话里，包管理器、测试命令、构建命令、浏览器调试工具和工作区运行时，经常会留下额外的 shell、辅助进程和子进程树。这个 skill 的作用，就是给 Codex 一套稳定的流程，让它能识别这些残留，并且只清理那些已经明确结束、没有继续复用价值的进程。
 
-这个 skill 的目标，是给 Codex 提供一套可复用、可公开发布、并且足够保守的 Windows 进程卫生方案：
+它尤其适合长任务场景，因为很多一次性命令其实在某一步结束后就已经没有用了，没有必要一直堆到整个任务收尾时再一起处理。
 
-- 避免长任务里已完成步骤的临时进程不断堆积
-- 在真正没有复用价值的时点更早回收高置信度残留
-- 保留还能复用的开发服务、交互 shell 和普通用户应用
+## 它解决什么问题
 
-## 风险
+- `npm`、`pnpm`、`yarn`、`bun`、`vite`、`vitest`、`cargo`、`tauri` 等命令结束后留下的临时 shell 和辅助进程
+- DevTools MCP、远程调试、浏览器自动化步骤结束后残留的 helper 进程
+- 长任务中“一步一堆积”的临时进程问题
+- 过度清理带来的误杀风险，例如把所有 shell 或运行时都当成可随手结束的对象
 
-进程清理本身很有价值，但如果边界放得太宽，也很容易出问题。主要风险包括：
+## 工作方式
 
-- 误杀当前 Codex shell 或 Codex 辅助 shell
-- 误杀普通浏览器或用户自己打开的运行时
-- 误杀下一步仍然要复用的长驻开发服务
-- 清理规则过度绑定某个私有项目，顺带暴露私有路径或真实项目名
+这个 skill 采用三种模式：
 
-因为这个仓库会公开发布，所以整体策略刻意偏保守，也要求所有示例和说明先脱敏再提交。
+- `inspect`：先分类，只看不杀
+- `checkpoint-cleanup`：在高风险步骤结束后，只回收高置信度残留
+- `cleanup`：在任务真正结束时，做最终清扫
 
-## 方案
+整个实现拆成两层判断：
 
-这个 skill 提供了一个分阶段清理模型：
+- 进程分类层负责回答“这是什么类型的进程”
+- 清理策略层负责回答“当前模式下该保留、只检查，还是立即清理”
 
-- `inspect`：先分类，查看哪些是候选进程、哪些是受保护进程
-- `checkpoint-cleanup`：在某个高风险步骤结束后，只回收高置信度且已经没有复用价值的残留进程
-- `cleanup`：在任务真正结束时，对剩余可清理的临时进程树做最终清扫
+## 安全边界
 
-整个方案分成两层：
+这个 skill 的策略是保守型的。
 
-- 分类层先判断“这是什么类型的进程”
-- 策略层再判断“在当前模式下该保留、只检查，还是立即清理”
+- 会保留当前 Codex shell 和 Codex helper shell
+- 会保留没有自动化或远程调试标记的普通浏览器
+- 当证据不够强时，会保留进程而不是强行清理
+- 在 checkpoint 阶段，会把可能还要复用的开发服务保持在 `inspect-only`
+- 只有在高置信度、并且当前步骤已经不再需要时，才会清理对应进程树
 
-## 安全模型
-
-这个仓库面向公开发布，因此清理策略刻意保持保守。
-
-- 永远不清理当前 Codex shell 和 Codex 辅助 shell
-- 永远不清理没有自动化或远程调试标记的普通浏览器
-- 永远不清理和当前任务证据不匹配的用户自有运行时
-- 在 checkpoint 清理里，永远不清理证据不足的模糊进程
-- 如果后续步骤可能复用某个进程，优先先跑 `inspect`
-
-Checkpoint 清理只针对以下高置信度对象：
+Checkpoint 清理主要面向这些对象：
 
 - DevTools MCP 服务、launcher 和 watchdog
-- 显式带有浏览器自动化或远程调试标记的进程
+- 明确带有浏览器自动化或远程调试标记的会话
 - 明确属于刚结束步骤的一次性 shell 和运行时
-- 明确启动了 `chrome-devtools-mcp`、`playwright` 或 `--remote-debugging-port` 的高置信度 wrapper shell
-
-像 `dev`、`serve`、`preview`、`watch`、`runserver`、`start` 这类长驻开发服务，在 checkpoint 阶段会保留为 `inspect-only`。
+- 明确启动了 `chrome-devtools-mcp`、`playwright` 或 `--remote-debugging-port` 的 wrapper shell
 
 ## 覆盖范围
 
-当前规则已经覆盖了多个生态里具有代表性的模式。示例不是穷举，但现有规则已经包含：
+当前规则已经覆盖多个常见生态中的代表性模式，包括：
 
-- JavaScript / TypeScript 生态中的 `npm`、`pnpm`、`yarn`、`bun`、`vite`、`vitest` 以及常见框架开发命令
-- Rust / Tauri 的 shell 工作流，例如 `cargo` 和 `cargo tauri dev`
-- Python 开发和测试命令，例如 `pytest`、`uvicorn`、`flask`、Django `runserver`
-- 当工作区匹配足够强时，.NET、Go、Ruby、PHP、Java 的开发或测试流程
-- DevTools MCP、Playwright 风格自动化以及带远程调试标记的浏览器会话
+- JavaScript / TypeScript 工作流，例如 `npm`、`pnpm`、`yarn`、`bun`、`vite`、`vitest` 和常见框架开发命令
+- Rust / Tauri 工作流，例如 `cargo` 和 `cargo tauri dev`
+- Python 工作流，例如 `pytest`、`uvicorn`、`flask` 和 Django `runserver`
+- 当工作区证据足够强时，.NET、Go、Ruby、PHP、Java 的开发或测试流程
+- DevTools MCP、Playwright 风格自动化以及远程调试浏览器会话
 
 ## 仓库结构
 
@@ -82,7 +72,7 @@ Checkpoint 清理只针对以下高置信度对象：
 
 1. 将这个仓库克隆或复制到你的 Codex skills 目录。
 2. 放到 `$CODEX_HOME/skills/codex-cleaning-temporary-processes`，或你本机对应的 Codex skill 路径下。
-3. 仓库文件夹名建议和 skill 名保持一致：`codex-cleaning-temporary-processes`。
+3. 仓库目录名建议与 skill 名保持一致：`codex-cleaning-temporary-processes`。
 
 ## 使用方式
 
@@ -92,7 +82,7 @@ Checkpoint 清理只针对以下高置信度对象：
 powershell -ExecutionPolicy Bypass -File "$env:USERPROFILE\.codex\skills\codex-cleaning-temporary-processes\scripts\cleanup-temporary-processes.ps1" -Mode inspect -Workspace "C:\Projects\ExampleApp"
 ```
 
-在某个高风险步骤结束后做 checkpoint 清理：
+在高风险步骤结束后做 checkpoint 清理：
 
 ```powershell
 powershell -ExecutionPolicy Bypass -File "$env:USERPROFILE\.codex\skills\codex-cleaning-temporary-processes\scripts\cleanup-temporary-processes.ps1" -Mode checkpoint-cleanup -Workspace "C:\Projects\ExampleApp"
@@ -112,14 +102,6 @@ powershell -ExecutionPolicy Bypass -File "$env:USERPROFILE\.codex\skills\codex-c
 Invoke-Pester -Path .\scripts\process-classification.Tests.ps1 -PassThru
 Invoke-Pester -Path .\scripts\cleanup-policy.Tests.ps1 -PassThru
 ```
-
-## 隐私与脱敏
-
-这个公开包应该只包含已经脱敏的 skill 源码。
-
-- 使用 `C:\Projects\ExampleApp` 这样的中性占位路径
-- 不要提交私有工作区路径、真实项目名或机器特定信息
-- 不要发布包含用户特定信息的进程采样输出
 
 ## 协议
 

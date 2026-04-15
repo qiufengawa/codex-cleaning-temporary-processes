@@ -1,70 +1,60 @@
 # Codex Cleaning Temporary Processes
 
-[Chinese](./README.zh-CN.md)
+[简体中文](./README.zh-CN.md)
 
-Safety-first Codex skill for Windows process hygiene. It helps inspect and clean temporary development processes after tool-driven work without killing the active Codex shell, ordinary user apps, or ambiguous long-lived services.
+Safety-first Codex skill for Windows process hygiene. It helps Codex inspect and clean temporary development processes after tool-driven work without touching the active Codex shell, ordinary user applications, or ambiguous long-lived services.
 
-## Purpose
+## Overview
 
-Long Codex sessions can leave behind temporary shells, package-manager commands, browser-debug helpers, DevTools MCP services, test runners, and workspace-owned runtimes. Waiting until the very end of a large task can cause unnecessary buildup.
+Windows development sessions often leave behind extra shells, test runners, build helpers, browser-debug processes, and workspace runtimes. This skill gives Codex a structured way to identify those leftovers and clean only the ones that are clearly finished.
 
-This skill exists to give Codex a safe, reusable workflow for Windows process hygiene:
+It is especially useful during long multi-step tasks where one-shot commands keep accumulating even though the next step no longer needs them.
 
-- prevent long tasks from accumulating already-finished temporary processes
-- reclaim high-confidence leftovers earlier, not only at final task completion
-- preserve reusable dev servers, interactive shells, and normal user applications
+## What It Solves
 
-## Risks
+- lingering temporary shells after `npm`, `pnpm`, `yarn`, `bun`, `vite`, `vitest`, `cargo`, `tauri`, and similar commands
+- extra DevTools MCP, remote-debug, or browser automation helpers after a tool step finishes
+- process buildup during long tasks where cleanup should happen between steps, not only at the very end
+- accidental over-cleaning caused by treating every runtime or shell as disposable
 
-Process cleanup is useful, but it becomes dangerous when the rules are too broad. The main risks are:
+## How It Works
 
-- killing the active Codex shell or Codex helper shells
-- killing ordinary browsers or user-owned runtimes that happen to be open
-- killing long-lived dev services that the next step still needs
-- overfitting cleanup rules to one private project and leaking private names or paths
+The skill uses a three-mode workflow:
 
-Because this repository is public, the design is intentionally conservative and the examples are sanitized.
+- `inspect`: classify temporary candidates and protected processes without killing anything
+- `checkpoint-cleanup`: reclaim only high-confidence leftovers after a risky step has finished
+- `cleanup`: do a final sweep for remaining killable temporary process trees
 
-## Solution
+Under the hood, the implementation stays split into two decisions:
 
-This skill adds a checkpoint cleanup workflow:
+- process classification determines what kind of process Codex is looking at
+- cleanup policy determines whether that process should be preserved, inspected only, or cleaned now
 
-- `inspect` to classify candidates and protected processes
-- `checkpoint-cleanup` to reclaim only high-confidence leftovers after a risky step finishes
-- `cleanup` to perform a final sweep for remaining killable temporary process trees
+## Safety Boundaries
 
-The solution uses two layers:
+This skill is intentionally conservative.
 
-- classification decides what kind of process Codex is looking at
-- cleanup policy decides whether the current mode should preserve, inspect, or clean it now
+- It preserves the active Codex shell and Codex helper shells
+- It preserves ordinary browsers that do not carry automation or remote-debug flags
+- It preserves ambiguous processes when the evidence is not strong enough
+- It keeps likely reusable dev servers in `inspect-only` during checkpoint cleanup
+- It only cleans high-confidence temporary process trees that no longer provide value to the current step
 
-## Safety Model
-
-This repository is intended for public use and keeps the cleanup policy intentionally conservative.
-
-- Never kill the active Codex shell or Codex helper shells
-- Never kill ordinary browsers without automation or remote-debug flags
-- Never kill unrelated user runtimes that do not match current task evidence
-- Never kill ambiguous processes during checkpoint cleanup
-- Prefer `inspect` first when the next step may still reuse a process
-
-Checkpoint cleanup only targets:
+Checkpoint cleanup is mainly for things like:
 
 - DevTools MCP services, launchers, and watchdogs
 - explicit browser automation or remote-debug sessions
-- one-shot shells and runtimes that clearly belong to the finished step
-- high-confidence wrapper shells that explicitly launched automation helpers such as `chrome-devtools-mcp`, `playwright`, or `--remote-debugging-port`
-
-Long-lived dev servers such as `dev`, `serve`, `preview`, `watch`, `runserver`, or `start` remain `inspect-only` during checkpoint cleanup.
+- one-shot shells and runtimes tied to a finished step
+- wrapper shells that clearly launched automation helpers such as `chrome-devtools-mcp`, `playwright`, or `--remote-debugging-port`
 
 ## Coverage
 
-The included classification rules already cover representative patterns across multiple ecosystems. The examples are not exhaustive, but the current rules include:
+The bundled rules already recognize representative patterns across multiple ecosystems, including:
 
-- JavaScript and TypeScript tooling such as `npm`, `pnpm`, `yarn`, `bun`, `vite`, `vitest`, and framework dev commands
-- Rust and Tauri shell workflows such as `cargo` and `cargo tauri dev`
-- Python dev and test commands such as `pytest`, `uvicorn`, `flask`, and Django `runserver`
-- .NET, Go, Ruby, PHP, and Java dev or test workflows when the workspace match is strong
+- JavaScript and TypeScript workflows such as `npm`, `pnpm`, `yarn`, `bun`, `vite`, `vitest`, and common framework dev commands
+- Rust and Tauri workflows such as `cargo` and `cargo tauri dev`
+- Python commands such as `pytest`, `uvicorn`, `flask`, and Django `runserver`
+- .NET, Go, Ruby, PHP, and Java dev or test workflows when workspace evidence is strong
 - DevTools MCP, Playwright-style automation, and remote-debug browser sessions
 
 ## Repository Layout
@@ -112,14 +102,6 @@ Run the shipped Pester suites:
 Invoke-Pester -Path .\scripts\process-classification.Tests.ps1 -PassThru
 Invoke-Pester -Path .\scripts\cleanup-policy.Tests.ps1 -PassThru
 ```
-
-## Privacy and Sanitization
-
-This public package should contain only sanitized skill sources.
-
-- Use neutral placeholders such as `C:\Projects\ExampleApp`
-- Do not commit private workspace paths, project names, or machine-specific data
-- Do not publish captured process output that contains user-specific information
 
 ## License
 
