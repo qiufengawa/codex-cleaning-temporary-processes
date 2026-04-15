@@ -642,6 +642,63 @@ Describe 'cleanup-temporary-processes entrypoint' {
     @($classificationTrace) | Should Be @('<none>', '401')
   }
 
+  It 'persists first-pass thread ownership before checkpoint cleanup changes the explicit automation snapshot' {
+    $harnessRoot = Join-Path $TestDrive 'cleanup-entrypoint-checkpoint-seeded-thread-ownership'
+    $preCleanupProcesses = @(
+      [pscustomobject]@{
+        ProcessId = 401
+        ParentProcessId = 1
+        Name = 'node'
+        CommandLine = 'node temp-devtools.js'
+        Category = 'devtools-mcp'
+        ThreadOwnershipSeedable = $true
+        Killable = $false
+        DesiredDecision = 'inspect-only'
+        DecisionReason = 'explicit automation lacks current-task ownership evidence'
+      }
+      [pscustomobject]@{
+        ProcessId = 501
+        ParentProcessId = 1
+        Name = 'node'
+        CommandLine = 'node temp-cleanup-root.js'
+        Killable = $true
+        DesiredDecision = 'cleanup-now'
+        DecisionReason = 'temporary tool'
+      }
+    )
+    $postCleanupProcesses = @(
+      [pscustomobject]@{
+        ProcessId = 401
+        ParentProcessId = 1
+        Name = 'node'
+        CommandLine = 'node temp-devtools.js'
+        Category = 'devtools-mcp'
+        ThreadOwnershipSeedable = $false
+        Killable = $false
+        DesiredDecision = 'inspect-only'
+        DecisionReason = 'explicit automation lost first-pass seed signal after cleanup'
+      }
+    )
+
+    $scriptUnderTest = New-CleanupEntrypointHarness `
+      -HarnessRoot $harnessRoot `
+      -PreCleanupProcesses $preCleanupProcesses `
+      -PostCleanupProcesses $postCleanupProcesses `
+      -FailStopIds @() `
+      -ThreadOwnershipEntries @() `
+      -ThreadOwnedPromotionIds @(401) `
+      -PersistUpdatedThreadOwnership $true
+
+    $firstOutput = & $scriptUnderTest -Mode checkpoint-cleanup -Workspace 'C:\Repo' -ConfirmCurrentThreadExplicitAutomation -AsJson | ConvertFrom-Json
+    $secondOutput = & $scriptUnderTest -Mode inspect -Workspace 'C:\Repo' -AsJson | ConvertFrom-Json
+    $secondRecord = @($secondOutput.processes | Where-Object { [int]$_.ProcessId -eq 401 }) | Select-Object -First 1
+    $classificationTrace = Get-Content -LiteralPath (Join-Path $harnessRoot 'classification-thread-ownership-trace.txt')
+
+    $firstOutput.killedCount | Should Be 1
+    $secondRecord.Killable | Should Be $true
+    @($classificationTrace) | Should Be @('<none>', '401')
+  }
+
   It 'does not seed or promote explicit automation without current-thread confirmation' {
     $harnessRoot = Join-Path $TestDrive 'cleanup-entrypoint-unconfirmed-thread-ownership'
     $preCleanupProcesses = @(

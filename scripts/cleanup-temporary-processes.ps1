@@ -125,6 +125,8 @@ $snapshot = Get-ClassifiedTemporaryProcessSnapshot -Workspace $Workspace -Thread
 $classified = @($snapshot.Classified)
 
 if ($Mode -in @("cleanup", "checkpoint-cleanup")) {
+  $null = Update-ThreadOwnershipEntries -ThreadId $threadId -ExistingEntries @($snapshot.ThreadOwnership) -Processes @($snapshot.Processes) -ClassifiedRecords @($classified) -Workspace $Workspace -CurrentTimeUtc ([datetime]::UtcNow)
+
   $killRoots = @($classified | Where-Object { $_.Decision -eq "cleanup-now" })
   $cleanupNowIds = New-Object 'System.Collections.Generic.HashSet[int]'
   foreach ($killRoot in $killRoots) {
