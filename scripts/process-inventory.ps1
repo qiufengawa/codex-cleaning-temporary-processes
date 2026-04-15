@@ -86,6 +86,51 @@ function ConvertFrom-UnixCommandLine {
   }
 }
 
+function Get-LiveTemporaryProcessRecord {
+  param([int]$ProcessId)
+
+  if ($ProcessId -le 0) {
+    return $null
+  }
+
+  if (Test-IsWindowsPlatform) {
+    $process = Get-CimInstance Win32_Process -Filter ("ProcessId = {0}" -f $ProcessId) -ErrorAction SilentlyContinue | Select-Object -First 1
+    if ($null -eq $process) {
+      return $null
+    }
+
+    return ConvertFrom-WindowsProcess -Process $process
+  }
+
+  $psCommand = Get-Command ps -CommandType Application -ErrorAction Stop
+  $identityRecord = $null
+  foreach ($line in & $psCommand.Source '-ww' '-p' $ProcessId '-o' 'pid=,ppid=,comm=') {
+    $identityRecord = ConvertFrom-UnixPsLine -Line $line
+    if ($null -ne $identityRecord) {
+      break
+    }
+  }
+
+  if ($null -eq $identityRecord) {
+    return $null
+  }
+
+  $commandLine = [string]$identityRecord.Name
+  foreach ($line in & $psCommand.Source '-ww' '-p' $ProcessId '-o' 'pid=,command=') {
+    $commandRecord = ConvertFrom-UnixCommandLine -Line $line
+    if ($null -ne $commandRecord) {
+      $commandLine = [string]$commandRecord.CommandLine
+      break
+    }
+  }
+
+  return New-InventoryProcessRecord `
+    -ProcessId ([int]$identityRecord.ProcessId) `
+    -ParentProcessId ([int]$identityRecord.ParentProcessId) `
+    -Name ([string]$identityRecord.Name) `
+    -CommandLine $commandLine
+}
+
 function Get-TemporaryProcessInventory {
   if (Test-IsWindowsPlatform) {
     return @(Get-CimInstance Win32_Process | ForEach-Object { ConvertFrom-WindowsProcess -Process $_ })

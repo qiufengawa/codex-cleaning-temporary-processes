@@ -47,7 +47,7 @@ Require strong evidence before cleanup:
 - clear DevTools MCP markers
 - current-workspace match plus dev, test, build, preview, serve, run, or watch markers
 - for relative child commands, a parent or ancestor that already has both workspace evidence and known dev, test, build, serve, or watch markers
-- if multiple Codex tasks or workspaces may be active, explicit automation still needs current-workspace or current-task ownership evidence; a current-thread-owned automation ledger may preserve that proof after the original launcher exits, but it never broadens cleanup for generic runtimes
+- if multiple Codex tasks or workspaces may be active, explicit automation still needs current-task lineage or current-thread-owned explicit automation evidence; current-workspace match alone is not enough, and a current-thread-owned automation ledger may preserve that proof after the original launcher exits, but it never broadens cleanup for generic runtimes
 
 If only one weak signal is present, inspect and report instead of killing.
 
@@ -63,7 +63,7 @@ Never kill:
 - plain interactive `powershell`, `pwsh`, `bash`, `zsh`, `sh`, or `fish` with no task-specific arguments
 - normal user browsers without automation or remote-debug flags
 - user-owned runtimes such as Node, Python, Java, Ruby, PHP, Go, or .NET when they do not match current task work
-- DevTools MCP, browser automation, or remote-debug browser sessions that lack current-workspace, current-task, or current-thread-owned explicit automation evidence
+- DevTools MCP, browser automation, or remote-debug browser sessions that lack current-task lineage or current-thread-owned explicit automation evidence
 - descendants that only trace back to Codex shell ancestry without real workspace-backed task evidence
 - anything you are not highly confident is temporary
 
@@ -102,7 +102,7 @@ This skill is meant for mainstream development workflows across multiple ecosyst
 - the Codex session shell and Codex helper shells
 - ordinary browsers opened for normal user activity
 - standalone runtimes with no current-workspace match
-- explicit automation from another workspace or Codex conversation when current-task ownership is not proven and the current Codex thread has not already claimed that automation
+- explicit automation from another workspace or Codex conversation when current-task lineage is not proven and the current Codex thread has not already claimed that automation
 - interactive shells with no task-specific command markers
 - anything still producing output for the active task
 
@@ -168,7 +168,7 @@ Pass `-Workspace` whenever a repo path helps distinguish current task-owned shel
 | After frontend, backend, mobile, or systems tooling that launched a one-shot command | Run `checkpoint-cleanup` after the step if those processes are no longer needed |
 | After Python, JVM, .NET, Go, Ruby, PHP, Elixir, Swift, Dart, or Node backend tooling | Inspect with `-Workspace`, then use `checkpoint-cleanup` only for non-reusable leftovers |
 | After DevTools MCP or browser-debug workflows | Use `checkpoint-cleanup` promptly to reclaim high-confidence MCP, watchdog, launcher, and automation trees |
-| Multiple Codex conversations or workspaces are active | Preserve explicit automation unless current-workspace or current-task evidence is strong, or the current Codex thread already proved ownership of that same explicit automation |
+| Multiple Codex conversations or workspaces are active | Preserve explicit automation unless current-task lineage is strong or the current Codex thread already proved ownership of that same explicit automation; workspace match alone is not enough |
 | User reports many runtime or shell processes | Inspect matching shell, runtime, and browser-debug processes first |
 | Only the Codex session shell or reusable dev servers remain | Stop and preserve them |
 
@@ -178,7 +178,7 @@ Pass `-Workspace` whenever a repo path helps distinguish current task-owned shel
 - Killing plain interactive shells that belong to the active Codex session
 - Killing every tool wrapper shell instead of limiting checkpoint cleanup to one-shot commands or explicit automation wrappers
 - Killing normal browsers without remote-debug or headless flags
-- Letting one project or Codex conversation clean another project's explicit automation without current-task ownership evidence
+- Letting one project or Codex conversation clean another project's explicit automation without current-task lineage or current-thread-owned evidence
 - Assuming current-thread ownership can make generic runtimes or ordinary dev tools killable by itself
 - Treating Codex-owned ancestry alone as sufficient proof that a relative child process belongs to the current task
 - Cleaning before test or build output is finished
@@ -197,4 +197,4 @@ Pass `-Workspace` whenever a repo path helps distinguish current task-owned shel
 - `inspect` mode lists temporary candidates and protected process classes
 - `checkpoint-cleanup` mode kills only high-confidence step-finished leftovers
 - `cleanup` mode kills only high-confidence temporary targets and any separately classified `cleanup-now` descendants, then reports the post-cleanup snapshot plus any failed kill ids
-- thread-owned explicit automation recovery uses local runtime state under `CODEX_HOME/state/...` or the OS temp directory when `CODEX_THREAD_ID` is available; otherwise the scripts fall back to workspace and current-task evidence only
+- thread-owned explicit automation recovery uses local runtime state under `CODEX_HOME/state/...` or the OS temp directory when `CODEX_THREAD_ID` is available; otherwise explicit automation falls back to current-task lineage while generic dev tools continue using workspace and ancestor evidence

@@ -276,6 +276,25 @@ Describe 'Get-TemporaryProcessClassifications' {
     $result[0].Killable | Should Be $false
   }
 
+  It 'does not let explicit automation shells become killable from workspace match alone' {
+    . $libraryPath
+
+    $processes = @(
+      [pscustomobject]@{
+        ProcessId = 161
+        ParentProcessId = 1
+        Name = 'cmd.exe'
+        CommandLine = 'cmd.exe /d /s /c npx -y chrome-devtools-mcp@latest --user-data-dir=C:\Repo\.tmp\chrome-profile'
+      }
+    )
+
+    $result = @(Get-TemporaryProcessClassifications -Processes $processes -Workspace 'C:\Repo')
+
+    $result.Count | Should Be 1
+    $result[0].Category | Should Be 'tool-shell'
+    $result[0].Killable | Should Be $false
+  }
+
   It 'classifies task-owned DevTools MCP launcher shells as killable' {
     . $libraryPath
 
@@ -895,7 +914,7 @@ Describe 'Get-TemporaryProcessClassifications' {
     $result[0].Killable | Should Be $false
   }
 
-  It 'classifies workspace-scoped Google Chrome app bundle remote-debug processes as killable browser-debug sessions' {
+  It 'does not let workspace-scoped Google Chrome app bundle remote-debug processes become killable without lineage or thread ownership' {
     . $libraryPath
 
     $processes = @(
@@ -911,7 +930,7 @@ Describe 'Get-TemporaryProcessClassifications' {
 
     $result.Count | Should Be 1
     $result[0].Category | Should Be 'browser-debug'
-    $result[0].Killable | Should Be $true
+    $result[0].Killable | Should Be $false
   }
 
   It 'classifies unowned google-chrome-stable remote-debug processes as inspect-only candidates' {
@@ -933,7 +952,7 @@ Describe 'Get-TemporaryProcessClassifications' {
     $result[0].Killable | Should Be $false
   }
 
-  It 'classifies workspace-scoped google-chrome-stable remote-debug processes as killable browser-debug sessions' {
+  It 'does not let workspace-scoped google-chrome-stable remote-debug processes become killable without lineage or thread ownership' {
     . $libraryPath
 
     $processes = @(
@@ -949,7 +968,7 @@ Describe 'Get-TemporaryProcessClassifications' {
 
     $result.Count | Should Be 1
     $result[0].Category | Should Be 'browser-debug'
-    $result[0].Killable | Should Be $true
+    $result[0].Killable | Should Be $false
   }
 
   It 'preserves generic runtime processes when the workspace does not match' {
@@ -988,7 +1007,7 @@ Describe 'Get-TemporaryProcessClassifications' {
     $result[0].Killable | Should Be $false
   }
 
-  It 'classifies workspace-scoped remote-debug browser processes as killable browser-debug sessions' {
+  It 'does not let workspace-scoped remote-debug browser processes become killable without lineage or thread ownership' {
     . $libraryPath
 
     $processes = @(
@@ -1001,6 +1020,35 @@ Describe 'Get-TemporaryProcessClassifications' {
     )
 
     $result = @(Get-TemporaryProcessClassifications -Processes $processes -Workspace 'C:\Repo')
+
+    $result.Count | Should Be 1
+    $result[0].Category | Should Be 'browser-debug'
+    $result[0].Killable | Should Be $false
+  }
+
+  It 'classifies thread-owned remote-debug browser processes as killable without fresh lineage evidence' {
+    . $libraryPath
+
+    $processes = @(
+      [pscustomobject]@{
+        ProcessId = 162
+        ParentProcessId = 1
+        Name = 'msedge.exe'
+        CommandLine = '"C:\Program Files\Microsoft\Edge\Application\msedge.exe" --remote-debugging-port=9222 --user-data-dir=C:\Repo\.tmp\edge-profile'
+      }
+    )
+    $threadOwnershipEntries = @(
+      [pscustomobject]@{
+        ProcessId = 162
+        Name = 'msedge.exe'
+        CommandLine = '"C:\Program Files\Microsoft\Edge\Application\msedge.exe" --remote-debugging-port=9222 --user-data-dir=C:\Repo\.tmp\edge-profile'
+        Category = 'browser-debug'
+        Workspace = 'C:\Repo'
+        ObservedAtUtc = '2026-04-15T14:10:00Z'
+      }
+    )
+
+    $result = @(Get-TemporaryProcessClassifications -Processes $processes -ThreadOwnershipEntries $threadOwnershipEntries)
 
     $result.Count | Should Be 1
     $result[0].Category | Should Be 'browser-debug'

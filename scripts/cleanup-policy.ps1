@@ -98,7 +98,7 @@ function Get-CleanupDecision {
     if ($explicitAutomationWithoutOwnership) {
       return [pscustomobject]@{
         Decision = "inspect-only"
-        Reason   = "Explicit automation lacks current-task ownership evidence"
+        Reason   = "Explicit automation lacks current-task lineage or current-thread ownership evidence"
       }
     }
 

@@ -34,8 +34,9 @@ Describe 'public skill trigger contract' {
     $skillMarkdown | Should Match 'after each finished high-risk step'
     $skillMarkdown | Should Match 'after a subagent finishes'
     $skillMarkdown | Should Match 'after a batch of one-shot shell or tool commands'
-    $skillMarkdown | Should Match 'current-task ownership evidence'
+    $skillMarkdown | Should Match 'current-task lineage'
     $skillMarkdown | Should Match 'current-thread-owned'
+    $skillMarkdown | Should Match 'workspace match alone'
   }
 
   It 'keeps implicit invocation enabled and the default prompt explicit about checkpoint timing' {
@@ -54,8 +55,9 @@ Describe 'public skill trigger contract' {
     $readmeEnglish | Should Match 'after each finished high-risk step'
     $readmeEnglish | Should Match 'DevTools MCP'
     $readmeEnglish | Should Match 'subagent'
-    $readmeEnglish | Should Match 'current-task ownership evidence'
+    $readmeEnglish | Should Match 'current-task lineage'
     $readmeEnglish | Should Match 'current-thread ownership'
+    $readmeEnglish | Should Match 'workspace match alone'
     $readmeEnglish | Should Match 'generic runtimes'
     $readmeEnglish | Should Match '## Troubleshooting'
     $readmeEnglish | Should Match 'explicitly ask Codex to use `\$codex-cleaning-temporary-processes`'

@@ -98,6 +98,24 @@ function Get-RootRecordCount {
   ).Count
 }
 
+function Test-InventoryProcessIdentityMatch {
+  param(
+    [object]$ExpectedProcess,
+    [object]$ActualProcess
+  )
+
+  if ($null -eq $ExpectedProcess -or $null -eq $ActualProcess) {
+    return $false
+  }
+
+  return (
+    ([int]$ExpectedProcess.ProcessId -eq [int]$ActualProcess.ProcessId) -and
+    ([int]$ExpectedProcess.ParentProcessId -eq [int]$ActualProcess.ParentProcessId) -and
+    ([string]$ExpectedProcess.Name -eq [string]$ActualProcess.Name) -and
+    ([string]$ExpectedProcess.CommandLine -eq [string]$ActualProcess.CommandLine)
+  )
+}
+
 $threadId = Get-CurrentCodexThreadId
 $snapshotTimeUtc = [datetime]::UtcNow
 $snapshot = Get-ClassifiedTemporaryProcessSnapshot -Workspace $Workspace -ThreadId $threadId -CurrentTimeUtc $snapshotTimeUtc -CurrentProcessId $PID
@@ -118,13 +136,26 @@ if ($Mode -in @("cleanup", "checkpoint-cleanup")) {
   }
 
   $attemptedKillIds = New-Object 'System.Collections.Generic.List[int]'
+  $snapshotProcessById = @{}
+  foreach ($process in $snapshot.Processes) {
+    $snapshotProcessById[[int]$process.ProcessId] = $process
+  }
+
   foreach ($killId in $killOrder) {
-    if (Get-Process -Id $killId -ErrorAction SilentlyContinue) {
-      $null = $attemptedKillIds.Add($killId)
-      try {
-        Stop-Process -Id $killId -Force -ErrorAction Stop
-      } catch {
-      }
+    if (-not $snapshotProcessById.ContainsKey($killId)) {
+      continue
+    }
+
+    $expectedProcess = $snapshotProcessById[$killId]
+    $liveProcess = Get-LiveTemporaryProcessRecord -ProcessId $killId
+    if (-not (Test-InventoryProcessIdentityMatch -ExpectedProcess $expectedProcess -ActualProcess $liveProcess)) {
+      continue
+    }
+
+    $null = $attemptedKillIds.Add($killId)
+    try {
+      Stop-Process -Id $killId -Force -ErrorAction Stop
+    } catch {
     }
   }
 

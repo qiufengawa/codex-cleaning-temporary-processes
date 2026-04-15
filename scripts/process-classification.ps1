@@ -323,6 +323,15 @@ function Test-TaskOwnershipEvidence {
   return $WorkspaceMatch -or $TaskOwnedAncestor
 }
 
+function Test-ExplicitAutomationOwnershipEvidence {
+  param(
+    [bool]$TaskOwnedAncestor,
+    [bool]$ThreadOwned
+  )
+
+  return $TaskOwnedAncestor -or $ThreadOwned
+}
+
 function Get-ThreadOwnershipIndex {
   param([object[]]$ThreadOwnershipEntries)
 
@@ -380,7 +389,7 @@ function New-ExplicitAutomationRecord {
     return New-ProcessRecord -Process $Process -Category $Category -Killable:$true -Reason $OwnedReason
   }
 
-  return New-ProcessRecord -Process $Process -Category $Category -Killable:$false -Reason "Explicit automation without current-task ownership evidence"
+  return New-ProcessRecord -Process $Process -Category $Category -Killable:$false -Reason "Explicit automation without current-task lineage or current-thread ownership evidence"
 }
 
 function Classify-TemporaryProcess {
@@ -414,11 +423,11 @@ function Classify-TemporaryProcess {
 
     if ((Test-ExplicitAutomationShellCommandLine -CommandLine $commandLine) -and $commandLine -notmatch "ConvertFrom-Json") {
       $threadOwned = Test-ThreadOwnedExplicitAutomation -Process $Process -Category "tool-shell" -ThreadOwnershipIndex $ThreadOwnershipIndex
-      $explicitAutomationOwned = $taskOwned -or $threadOwned
-      $ownedReason = if ($threadOwned -and -not $taskOwned) {
+      $explicitAutomationOwned = Test-ExplicitAutomationOwnershipEvidence -TaskOwnedAncestor $taskOwnedAncestor -ThreadOwned $threadOwned
+      $ownedReason = if ($threadOwned -and -not $taskOwnedAncestor) {
         "Current-thread shell for explicit automation work"
       } else {
-        "Task-owned shell for explicit automation work"
+        "Current-task lineage for explicit automation work"
       }
 
       return New-ExplicitAutomationRecord -Process $Process -Category "tool-shell" -TaskOwned $explicitAutomationOwned -OwnedReason $ownedReason
@@ -437,11 +446,11 @@ function Classify-TemporaryProcess {
   if (Test-NamePatternList -Value $name -Patterns $script:CmdShellNamePatterns) {
     if (Test-ExplicitAutomationShellCommandLine -CommandLine $commandLine) {
       $threadOwned = Test-ThreadOwnedExplicitAutomation -Process $Process -Category "tool-shell" -ThreadOwnershipIndex $ThreadOwnershipIndex
-      $explicitAutomationOwned = $taskOwned -or $threadOwned
-      $ownedReason = if ($threadOwned -and -not $taskOwned) {
+      $explicitAutomationOwned = Test-ExplicitAutomationOwnershipEvidence -TaskOwnedAncestor $taskOwnedAncestor -ThreadOwned $threadOwned
+      $ownedReason = if ($threadOwned -and -not $taskOwnedAncestor) {
         "Current-thread shell for explicit automation work"
       } else {
-        "Task-owned shell for explicit automation work"
+        "Current-task lineage for explicit automation work"
       }
 
       return New-ExplicitAutomationRecord -Process $Process -Category "tool-shell" -TaskOwned $explicitAutomationOwned -OwnedReason $ownedReason
@@ -457,11 +466,11 @@ function Classify-TemporaryProcess {
   if (Test-NamePatternList -Value $name -Patterns $script:NodeNamePatterns) {
     if ($commandLine -match "telemetry\\watchdog\\main\.js") {
       $threadOwned = Test-ThreadOwnedExplicitAutomation -Process $Process -Category "devtools-watchdog" -ThreadOwnershipIndex $ThreadOwnershipIndex
-      $explicitAutomationOwned = $taskOwned -or $threadOwned
-      $ownedReason = if ($threadOwned -and -not $taskOwned) {
+      $explicitAutomationOwned = Test-ExplicitAutomationOwnershipEvidence -TaskOwnedAncestor $taskOwnedAncestor -ThreadOwned $threadOwned
+      $ownedReason = if ($threadOwned -and -not $taskOwnedAncestor) {
         "Current-thread DevTools MCP watchdog"
       } else {
-        "Current-task DevTools MCP watchdog"
+        "Current-task lineage for DevTools MCP watchdog"
       }
 
       return New-ExplicitAutomationRecord -Process $Process -Category "devtools-watchdog" -TaskOwned $explicitAutomationOwned -OwnedReason $ownedReason
@@ -469,11 +478,11 @@ function Classify-TemporaryProcess {
 
     if ($commandLine -match "npx-cli\.js.*chrome-devtools-mcp@latest") {
       $threadOwned = Test-ThreadOwnedExplicitAutomation -Process $Process -Category "devtools-launcher" -ThreadOwnershipIndex $ThreadOwnershipIndex
-      $explicitAutomationOwned = $taskOwned -or $threadOwned
-      $ownedReason = if ($threadOwned -and -not $taskOwned) {
+      $explicitAutomationOwned = Test-ExplicitAutomationOwnershipEvidence -TaskOwnedAncestor $taskOwnedAncestor -ThreadOwned $threadOwned
+      $ownedReason = if ($threadOwned -and -not $taskOwnedAncestor) {
         "Current-thread DevTools MCP launcher"
       } else {
-        "Current-task DevTools MCP launcher"
+        "Current-task lineage for DevTools MCP launcher"
       }
 
       return New-ExplicitAutomationRecord -Process $Process -Category "devtools-launcher" -TaskOwned $explicitAutomationOwned -OwnedReason $ownedReason
@@ -481,11 +490,11 @@ function Classify-TemporaryProcess {
 
     if ($commandLine -match "chrome-devtools-mcp") {
       $threadOwned = Test-ThreadOwnedExplicitAutomation -Process $Process -Category "devtools-mcp" -ThreadOwnershipIndex $ThreadOwnershipIndex
-      $explicitAutomationOwned = $taskOwned -or $threadOwned
-      $ownedReason = if ($threadOwned -and -not $taskOwned) {
+      $explicitAutomationOwned = Test-ExplicitAutomationOwnershipEvidence -TaskOwnedAncestor $taskOwnedAncestor -ThreadOwned $threadOwned
+      $ownedReason = if ($threadOwned -and -not $taskOwnedAncestor) {
         "Current-thread DevTools MCP service"
       } else {
-        "Current-task DevTools MCP service"
+        "Current-task lineage for DevTools MCP service"
       }
 
       return New-ExplicitAutomationRecord -Process $Process -Category "devtools-mcp" -TaskOwned $explicitAutomationOwned -OwnedReason $ownedReason
@@ -497,11 +506,11 @@ function Classify-TemporaryProcess {
 
     if ($commandLine -match $script:BrowserAutomationPattern) {
       $threadOwned = Test-ThreadOwnedExplicitAutomation -Process $Process -Category "browser-automation" -ThreadOwnershipIndex $ThreadOwnershipIndex
-      $explicitAutomationOwned = $taskOwned -or $threadOwned
-      $ownedReason = if ($threadOwned -and -not $taskOwned) {
+      $explicitAutomationOwned = Test-ExplicitAutomationOwnershipEvidence -TaskOwnedAncestor $taskOwnedAncestor -ThreadOwned $threadOwned
+      $ownedReason = if ($threadOwned -and -not $taskOwnedAncestor) {
         "Current-thread browser automation helper"
       } else {
-        "Current-task browser automation helper"
+        "Current-task lineage for browser automation helper"
       }
 
       return New-ExplicitAutomationRecord -Process $Process -Category "browser-automation" -TaskOwned $explicitAutomationOwned -OwnedReason $ownedReason
@@ -529,11 +538,11 @@ function Classify-TemporaryProcess {
   if (Test-NamePatternList -Value $name -Patterns $script:BrowserNamePatterns) {
     if ($commandLine -match $script:BrowserDebugPattern) {
       $threadOwned = Test-ThreadOwnedExplicitAutomation -Process $Process -Category "browser-debug" -ThreadOwnershipIndex $ThreadOwnershipIndex
-      $explicitAutomationOwned = $taskOwned -or $threadOwned
-      $ownedReason = if ($threadOwned -and -not $taskOwned) {
+      $explicitAutomationOwned = Test-ExplicitAutomationOwnershipEvidence -TaskOwnedAncestor $taskOwnedAncestor -ThreadOwned $threadOwned
+      $ownedReason = if ($threadOwned -and -not $taskOwnedAncestor) {
         "Current-thread browser automation or remote-debug session"
       } else {
-        "Current-task browser automation or remote-debug session"
+        "Current-task lineage for browser automation or remote-debug session"
       }
 
       return New-ExplicitAutomationRecord -Process $Process -Category "browser-debug" -TaskOwned $explicitAutomationOwned -OwnedReason $ownedReason

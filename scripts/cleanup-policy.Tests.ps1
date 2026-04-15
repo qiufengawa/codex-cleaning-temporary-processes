@@ -409,7 +409,7 @@ Describe 'Get-CleanupDecision' {
     $decision.Decision | Should Be 'inspect-only'
   }
 
-  It 'treats full cleanup mode as cleanup-now for any task-owned killable record' {
+  It 'treats full cleanup mode as cleanup-now for any killable explicit automation record' {
     . $classificationLibraryPath
     . $policyLibraryPath
 
@@ -421,8 +421,18 @@ Describe 'Get-CleanupDecision' {
         CommandLine = '"C:\Program Files\Microsoft\Edge\Application\msedge.exe" --remote-debugging-port=9222 --user-data-dir=C:\Repo\.tmp\edge-profile'
       }
     )
+    $threadOwnershipEntries = @(
+      [pscustomobject]@{
+        ProcessId = 254
+        Name = 'msedge.exe'
+        CommandLine = '"C:\Program Files\Microsoft\Edge\Application\msedge.exe" --remote-debugging-port=9222 --user-data-dir=C:\Repo\.tmp\edge-profile'
+        Category = 'browser-debug'
+        Workspace = 'C:\Repo'
+        ObservedAtUtc = '2026-04-15T14:10:00Z'
+      }
+    )
 
-    $record = @(Get-TemporaryProcessClassifications -Processes $processes -Workspace 'C:\Repo')[0]
+    $record = @(Get-TemporaryProcessClassifications -Processes $processes -ThreadOwnershipEntries $threadOwnershipEntries)[0]
     $decision = Get-CleanupDecision -Record $record -Mode 'cleanup'
 
     $decision.Decision | Should Be 'cleanup-now'

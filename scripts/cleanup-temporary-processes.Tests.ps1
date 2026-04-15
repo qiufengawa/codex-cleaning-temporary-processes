@@ -4,6 +4,7 @@ function New-CleanupEntrypointHarness {
   param(
     [string]$HarnessRoot,
     [object[]]$PreCleanupProcesses,
+    [object[]]$LiveProcesses,
     [object[]]$PostCleanupProcesses,
     [int[]]$FailStopIds,
     [object[]]$ThreadOwnershipEntries = @(),
@@ -13,9 +14,14 @@ function New-CleanupEntrypointHarness {
   $null = New-Item -ItemType Directory -Path $HarnessRoot -Force
   Copy-Item -LiteralPath $entrypointPath -Destination (Join-Path $HarnessRoot 'cleanup-temporary-processes.ps1') -Force
 
+  if ($null -eq $LiveProcesses) {
+    $LiveProcesses = @($PreCleanupProcesses)
+  }
+
   $preCleanupJson = $PreCleanupProcesses | ConvertTo-Json -Depth 6 -Compress
   $postCleanupJson = $PostCleanupProcesses | ConvertTo-Json -Depth 6 -Compress
-  $presentProcessIdsJson = @($PreCleanupProcesses | ForEach-Object { [int]$_.ProcessId }) | ConvertTo-Json -Compress
+  $presentProcessIdsJson = @($LiveProcesses | ForEach-Object { [int]$_.ProcessId }) | ConvertTo-Json -Compress
+  $liveProcessesJson = $LiveProcesses | ConvertTo-Json -Depth 6 -Compress
   $failStopIdsJson = @($FailStopIds) | ConvertTo-Json -Compress
   $threadOwnershipJson = @($ThreadOwnershipEntries) | ConvertTo-Json -Depth 6 -Compress
   $threadOwnedPromotionIdsJson = @($ThreadOwnedPromotionIds) | ConvertTo-Json -Compress
@@ -35,6 +41,9 @@ $postCleanupJson
 `$script:PresentProcessIds = @((ConvertFrom-Json @'
 $presentProcessIdsJson
 '@))
+`$script:LiveProcesses = @((ConvertFrom-Json @'
+$liveProcessesJson
+'@))
 `$script:FailStopIds = @((ConvertFrom-Json @'
 $failStopIdsJson
 '@))
@@ -44,6 +53,12 @@ function Get-TemporaryProcessInventory {
   `$snapshot = `$script:InventorySnapshots[`$index]
   `$script:InventoryCallCount += 1
   return @(`$snapshot)
+}
+
+function Get-LiveTemporaryProcessRecord {
+  param([int]`$ProcessId)
+
+  return @(`$script:LiveProcesses | Where-Object { [int]`$_.ProcessId -eq `$ProcessId }) | Select-Object -First 1
 }
 
 function Get-Process {
@@ -346,6 +361,50 @@ Describe 'cleanup-temporary-processes entrypoint' {
     @($output.killedIds) | Should Be @(101)
     $output.failedCount | Should Be 0
     @($output.processes | ForEach-Object { [int]$_.ProcessId }) | Should Be @(301)
+  }
+
+  It 'skips cleanup when a killable pid now resolves to a different live process identity' {
+    $preCleanupProcesses = @(
+      [pscustomobject]@{
+        ProcessId = 501
+        ParentProcessId = 1
+        Name = 'node'
+        CommandLine = 'node temp-root.js'
+        Killable = $true
+        DesiredDecision = 'cleanup-now'
+        DecisionReason = 'temporary tool'
+      }
+    )
+
+    $postCleanupProcesses = @(
+      [pscustomobject]@{
+        ProcessId = 501
+        ParentProcessId = 1
+        Name = 'pwsh'
+        CommandLine = 'pwsh -NoLogo'
+        Killable = $false
+        DesiredDecision = 'preserve'
+        DecisionReason = 'pid reused by active shell'
+      }
+    )
+
+    $scriptUnderTest = New-CleanupEntrypointHarness `
+      -HarnessRoot (Join-Path $TestDrive 'cleanup-entrypoint-pid-reuse') `
+      -PreCleanupProcesses $preCleanupProcesses `
+      -LiveProcesses $postCleanupProcesses `
+      -PostCleanupProcesses $postCleanupProcesses `
+      -FailStopIds @()
+
+    $output = & $scriptUnderTest -Mode cleanup -AsJson | ConvertFrom-Json
+
+    $output.killedCount | Should Be 0
+    @($output.killedIds).Count | Should Be 0
+    $output.failedCount | Should Be 0
+    @($output.failedIds).Count | Should Be 0
+    $output.decisionCounts.cleanupNow | Should Be 0
+    $output.decisionCounts.preserve | Should Be 1
+    $output.processes[0].Name | Should Be 'pwsh'
+    $output.processes[0].CommandLine | Should Be 'pwsh -NoLogo'
   }
 
   It 'passes current-thread ownership entries into classification before counting killable roots' {

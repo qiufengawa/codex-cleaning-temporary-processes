@@ -23,7 +23,7 @@ The implementation uses a shared PowerShell entrypoint plus a shell wrapper for 
 - Windows: PowerShell is available by default
 - macOS or Linux: install PowerShell 7 so `pwsh` is available
 - If your checkout does not preserve executable bits, run the Unix wrapper through `bash`
-- Thread-aware explicit automation recovery works best when Codex exposes `CODEX_THREAD_ID`; if no thread id is available, the skill falls back to workspace and current-task evidence only
+- Thread-aware explicit automation recovery works best when Codex exposes `CODEX_THREAD_ID`; if no thread id is available, explicit automation falls back to current-task lineage while generic dev tools keep using workspace and ancestor evidence
 
 ## Ecosystem Coverage
 
@@ -60,7 +60,7 @@ The classification rules stay intentionally conservative when attributing a proc
 
 - Prefer passing `-Workspace` so command lines can be matched to the active repo or project path
 - Relative child commands can inherit task ownership only when a parent or ancestor already has both workspace evidence and known dev, test, build, serve, or watch markers
-- Explicit automation and remote-debug processes stay `inspect-only` unless current-workspace or current-task ownership evidence is strong enough
+- Explicit automation and remote-debug processes stay `inspect-only` unless current-task lineage or current-thread-owned evidence is strong enough; workspace match alone is not enough
 - A local current-thread ownership ledger can keep explicit automation reclaimable after this Codex conversation has already proven ownership once, even if the original launcher shell exits later
 - Current-thread ownership never makes generic runtimes or ordinary dev tools killable by itself
 - Codex-owned shell ancestry by itself is never enough to make descendants killable
@@ -91,7 +91,7 @@ This skill is intentionally conservative.
 
 - It preserves the active Codex shell and Codex helper shells
 - It preserves ordinary browsers that do not carry automation or remote-debug flags
-- It preserves DevTools MCP, browser automation, and remote-debug sessions when current-task ownership is not proven
+- It preserves DevTools MCP, browser automation, and remote-debug sessions when current-task lineage or current-thread ownership is not proven
 - It may continue to reclaim current-thread-owned explicit automation that this Codex conversation already proved it owned earlier in the task
 - It preserves ambiguous processes when the evidence is not strong enough
 - It keeps likely reusable dev servers in `inspect-only` during checkpoint cleanup
@@ -111,8 +111,8 @@ Incremental `checkpoint-cleanup` is for clearly finished steps. Final `cleanup` 
 When several Codex conversations, branches, or repositories are active at once, the skill should only clean processes that belong to the current task.
 
 - Workspace-backed dev, test, build, serve, and runtime processes must match the current workspace or a task-owned ancestor.
-- Explicit automation such as DevTools MCP, Playwright-style helpers, or remote-debug browsers stays `inspect-only` unless the current task can prove ownership.
-- Current-thread ownership is only a recovery hint for explicit automation that the same Codex conversation already proved it owned; it is not a blanket same-workspace cleanup permission.
+- Explicit automation such as DevTools MCP, Playwright-style helpers, or remote-debug browsers stays `inspect-only` unless the current task can prove lineage or the same Codex thread has already proved ownership.
+- Current-thread ownership is only a recovery hint for explicit automation that the same Codex conversation already proved it owned; workspace match alone is not a blanket same-workspace cleanup permission.
 - Codex-owned ancestry by itself is not enough to let one project clean another project's process tree.
 
 ## What It Will Not Do
@@ -120,7 +120,7 @@ When several Codex conversations, branches, or repositories are active at once, 
 - It will not kill the active Codex shell or Codex helper shells
 - It will not kill normal user browsers without automation flags
 - It will not kill unmatched runtimes just because they are `node`, `python`, `java`, or similar
-- It will not kill DevTools MCP, browser automation, or remote-debug sessions from another workspace or Codex conversation when current-task ownership is not established
+- It will not kill DevTools MCP, browser automation, or remote-debug sessions from another workspace or Codex conversation when current-task lineage is not established
 - It will not use current-thread ownership alone to kill generic dev, test, build, or runtime processes
 - It will not treat Codex-owned shell ancestry alone as proof that a descendant belongs to the current task
 - It will not force cleanup when evidence is weak; those processes stay in `inspect-only`
@@ -166,7 +166,7 @@ The `processes` array in cleanup modes is re-inspected after kill attempts, so c
 - `docs/trigger-regression-scenarios.md`: English trigger timing scenarios
 - `docs/trigger-regression-scenarios.zh-CN.md`: Chinese trigger timing scenarios
 
-Thread-aware ownership state is local runtime data, not part of the public package. When available, it is stored under `$CODEX_HOME/state/codex-cleaning-temporary-processes/thread-ownership/`; otherwise the scripts fall back to the OS temporary directory. If `CODEX_THREAD_ID` is missing, that optimization is disabled and the skill stays on workspace and current-task evidence only.
+Thread-aware ownership state is local runtime data, not part of the public package. When available, it is stored under `$CODEX_HOME/state/codex-cleaning-temporary-processes/thread-ownership/`; otherwise the scripts fall back to the OS temporary directory. If `CODEX_THREAD_ID` is missing, that optimization is disabled and explicit automation stays on current-task lineage while generic dev tools continue using workspace and ancestor evidence.
 
 ## Installation
 
