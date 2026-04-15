@@ -2,129 +2,83 @@
 
 [English](./README.md)
 
-Codex Cleaning Temporary Processes 是一个公开的跨平台包，用于在 Windows、macOS 和 Linux 上安全清理临时开发进程。
+Codex Cleaning Temporary Processes 是一个公开的跨平台 skill，用来在不越过工作区边界的前提下，安全清理临时开发进程。
 
-## 公开包模型
+## 纯 Skill 形态
 
-这个仓库支持两种面向用户的安装方式：
+这个仓库以纯 skill 形式发布。
 
-- 插件式安装：保持仓库根目录完整，包含 `.codex-plugin/plugin.json`、`hooks.json` 和 `hooks/`。这是启用自动强触发的安装即运行路径。
-- skill 式安装：将仓库放到 `CODEX_HOME/skills/codex-cleaning-temporary-processes` 下，可以看到 `SKILL.md`、`agents/openai.yaml` 和脚本，但不会自动启用插件 hook 行为。
+- 安装到 `CODEX_HOME/skills/codex-cleaning-temporary-processes`
+- 保持 `SKILL.md`、`agents/openai.yaml` 和 `scripts/` 在一起
+- 依赖最佳努力的隐式调用，而不是插件 hook 或宿主回调
 
-已安装的插件包负责自动检查点，独立的 [`SKILL.md`](./SKILL.md) 继续作为手动兜底入口。自动触发改变的是 Codex 何时重新检查清理，而不是它被允许清理什么。
+这意味着 skill 可以主动引导 Codex 在合适的时机考虑清理，但它不能单靠自己提供宿主级的强自动触发。如果你的环境里没有发生隐式调用，就显式要求 Codex 使用 `$codex-cleaning-temporary-processes`。
 
-## 自动强触发
+## 覆盖范围
 
-当包以插件式安装启用时，它应当在固定检查点自动重新评估清理，例如：
+这个 skill 面向公开场景，不局限于单一前端项目。它应该能理解主流工具链留下的临时进程残留，例如：
 
-- 每个已结束的高风险工具步骤之后
-- DevTools MCP、浏览器自动化或远程调试步骤结束之后
-- 一批一次性 helper 已完成且不再有复用价值之后
-- 子代理结束之后
-- 会话结束时的最终清扫
+- JavaScript / TypeScript：`npm`、`pnpm`、`yarn`、`bun`、`vite`、`vitest`、`jest`、`webpack`、`rollup`、`next`、`nuxt`、`turbo`
+- Rust 与原生工具链：`cargo`、`rustc`、`tauri`、`trunk`
+- Python：`python`、`uv`、`pip`、`poetry`、`hatch`、`pytest`
+- JVM 与 .NET：`java`、`mvn`、`gradle`、`dotnet`
+- 其他常见栈：`go`、`ruby`、`bundle`、`rails`、`php`、`composer`、`artisan`、`elixir`、`mix`、`deno`
+- 浏览器自动化与远程调试：`chrome-devtools-mcp`、Playwright 风格工具、无头浏览器、远程调试启动链路
 
-这种固定检查点模型是刻意设计的。自动路径不应该依赖“等任务快结束时再想起清理”，而应该在明确结束的检查点发生后尽快处理，避免进程堆积。
-
-## 手动兜底
-
-当包只以 skill 式安装存在，或者插件 hook 不可用时，`SKILL.md` 就是手动兜底指南。
-
-手动路径适合用来：
-
-- 让 Codex 显式运行 `inspect`、`checkpoint-cleanup` 或 `cleanup`
-- 解释为什么某个进程被判定为 `cleanup-now`、`inspect-only` 或 `preserve`
-- 在清理前先做一次显式审查
-
-手动路径仍然应该遵循同样的固定检查点。如果几个高风险步骤已经结束，就不要等整个任务结束后才检查残留。
+覆盖范围广，不代表清理策略激进。最终是否清理仍然由安全规则决定。
 
 ## 触发节奏
 
-把清理理解为按检查点触发：
+把清理理解成按检查点触发，而不是等整个任务结束。
 
-- 每个已结束的高风险步骤之后重新评估
-- DevTools MCP 或浏览器调试检查点结束之后重新评估
-- 子代理结果返回且其工具链不再需要时重新评估
-- 一批一次性命令完成、需要做积压缓解时重新评估
-- 会话结束时重新评估最终清扫
+这个 skill 适合在下面这些“已结束检查点”之后重新评估：
 
-当步骤已经明确结束时，优先使用 `checkpoint-cleanup`；如果下一步仍可能复用进程，则先用 `inspect`。
+- 某个 build、test、install、preview、serve、watch 或一次性 runtime 步骤已经结束
+- 某个 DevTools、浏览器自动化或远程调试步骤已经结束
+- 某个子代理已经结束，且它拉起的 helper 已经没有复用价值
+- 一批一次性命令已经结束，进程积压需要缓解
+- 当前工作分支已经暂停，适合做一次明确安全的最终清扫
+
+因为这是纯 skill 包，所以这里描述的是最佳努力的隐式调用，不是宿主保证的自动回调。
+
+模式建议：
+
+- 可能复用时，先用 `inspect`
+- 已结束检查点留下高置信度残留时，用 `checkpoint-cleanup`
+- 剩余临时进程树已经明确无用时，用 `cleanup`
 
 ## 安全模型
 
-这个包刻意保持保守。
+这个 skill 刻意保持保守。
 
 - 保留当前 Codex shell 和 Codex helper shell
 - 保留没有自动化或远程调试标记的普通浏览器
-- 当归属证据不足时保留存在歧义的 runtime
-- 在 checkpoint 清理阶段保留可能仍可复用的开发服务
+- 当归属证据不足时，保留有歧义的 runtime
+- 在检查点清理阶段保留可能仍可复用的开发服务
 - 只清理对当前检查点已经没有价值的高置信度临时进程树
 
 显式自动化有额外保护：
 
-- 必须有当前任务链路证据或当前线程拥有的显式自动化证据
+- 必须有当前任务链路或当前线程确认归属
 - 仅有工作区匹配仍然不够
-- `Codex.exe app-server` 祖先进程只能让显式自动化进入可记录范围，不能直接变成可清理
-- `-ConfirmCurrentThreadExplicitAutomation` 只适用于第一次后续确认，而且必须显式确认同一线程刚刚真的使用过该自动化，并且工作区非空
+- `Codex.exe app-server` 祖先进程可以让对象进入可记账范围，但不能直接变成可清理
+- `-ConfirmCurrentThreadExplicitAutomation` 只适用于第一次后续确认，而且必须和非空工作区一起使用
 - 当前线程拥有权不会放宽普通 runtime 的清理范围
 
 ## 多项目隔离
 
-当多个项目或多个 Codex 对话同时活跃时，这个包也必须保持安全。
+当多个项目或多个 Codex 对话同时活跃时，这个 skill 也必须安全。
 
-- 带工作区归属的 build、test、serve、watch 和 runtime 进程，必须匹配当前工作区或当前任务祖先进程
-- 其他工作区或其他 Codex 对话留下的显式自动化，除非能证明当前任务链路归属或当前线程确认归属，否则保持 `inspect-only`
-- 当前线程拥有权只是同一对话、同一工作区下显式自动化的兜底恢复信号
-- 不能因为存在同线程自动化声明，就把普通 runtime 直接提升为可清理对象
-
-## 清理与本地状态
-
-同线程显式自动化恢复会在本地运行时状态里使用经过清理的线程标识和规范化的工作区值。
-
-- 优先写入 `CODEX_HOME/state/codex-cleaning-temporary-processes/...`
-- 如果没有 `CODEX_HOME`，则退回到操作系统临时目录
-- 这些本地状态只是运行期辅助数据，不会成为放宽清理权限的理由
-
-## 跨平台打包内容
-
-这个公开包包含：
-
-- [`SKILL.md`](./SKILL.md)：手动兜底指南
-- [`agents/openai.yaml`](./agents/openai.yaml)：安装时元数据和默认自动提示
-- `.codex-plugin/plugin.json`、`hooks.json` 和 `hooks/`：插件式自动检查点
-- 用于盘点、分类、策略、账本和清理的 PowerShell 脚本
-- macOS / Linux 的 shell wrapper
-- 英文主文档和中文配套文档
-- 用于触发、分类、策略和入口行为的 Pester 测试
-
-这个包从设计上就是跨平台的：
-
-- Windows 直接使用 PowerShell
-- macOS 和 Linux 可以使用 `pwsh`
-- macOS 和 Linux 也可以使用提供的 `bash` wrapper
-
-## 运行要求
-
-- Windows：默认自带 PowerShell
-- macOS / Linux：安装 PowerShell 7 并保证 `pwsh` 可用
-- 如果你的检出环境不保留可执行位，可以通过 `bash` 调用 Unix wrapper
+- 带工作区归属的 build、test、serve、watch 和 runtime 进程，必须匹配当前工作区或任务祖先进程
+- 其他工作区或其他对话留下的显式自动化，除非当前任务链路或当前线程确认归属能证明所有权，否则继续保持 `inspect-only`
+- 不能因为存在同线程自动化证据，就把普通 runtime 提升为可清理对象
 
 ## 安装方式
 
-### 插件式安装
-
-当你需要自动强触发时，使用这个模式。
-
-1. 保持仓库根目录完整，确保 `.codex-plugin/plugin.json`、`hooks.json`、`hooks/`、`agents/openai.yaml` 和 `scripts/` 一起存在。
-2. 通过你的 Codex 插件流程安装或启用这个包。
-3. 确认当前环境支持插件 hook，这样固定检查点才能自动运行。
-
-### skill 式安装
-
-当你只需要手动 skill 文本和脚本时，使用这个模式。
-
-1. 把包放到 `CODEX_HOME/skills/codex-cleaning-temporary-processes`。
-2. 使用独立的 `SKILL.md` 指南，或者直接调用脚本。
-3. 不要期待 skill 式安装本身带来自动 hook 行为。
+1. 把这个仓库复制到 `CODEX_HOME/skills/codex-cleaning-temporary-processes`。
+2. 保持 `SKILL.md`、`agents/openai.yaml`、`scripts/` 和文档一起存在。
+3. 在支持的环境里让 Codex 通过隐式调用使用这个 skill。
+4. 如果你的环境没有发生隐式调用，就显式要求 Codex 使用 `$codex-cleaning-temporary-processes`。
 
 ## 使用方式
 
@@ -146,18 +100,18 @@ macOS / Linux 使用 shell wrapper：
 bash "$CODEX_HOME/skills/codex-cleaning-temporary-processes/scripts/cleanup-temporary-processes.sh" -Mode inspect -Workspace "/Users/example/project"
 ```
 
-如果某个已结束的检查点确实在当前线程里使用过 DevTools MCP、Playwright 风格自动化或远程调试浏览器，就在第一次后续检查时同时加上 `-ConfirmCurrentThreadExplicitAutomation` 和工作区。第一次确认负责记录同线程归属；后续同工作区检查才可能继续回收 launcher 退出后的残留。
+如果当前线程刚刚确实用过 DevTools MCP、浏览器自动化或远程调试浏览器，就在第一次后续检查时同时加上 `-ConfirmCurrentThreadExplicitAutomation` 和工作区。
 
-## 故障排查
+## 包内容
 
-- 如果这个包只以 skill 式安装存在，请显式要求 Codex 使用 `$codex-cleaning-temporary-processes`。
-- 如果自动 hook 不可用，请检查插件式安装文件是否齐全：`.codex-plugin/plugin.json`、`hooks.json` 和 `hooks/`。
-- 如果进程栈仍在增长，请检查某个已结束的高风险步骤或子代理结果之后，是否漏掉了固定检查点。
-- 如果下一步可能复用某个进程，先让 Codex 跑 `inspect`，而不是强制清理。
-- 如果某个进程被保留，这通常意味着工作区证据、自动化标记或其他强归属信号还不够。
-- 如果 `-Workspace` 为空、缺失或指向别的仓库，同线程确认就不会记账，也不会提升这些对象。
-- 如果某个进程只是在 `Codex.exe app-server` 下面，也仍然不足以清理它。
-- 如果多个项目同时活跃，无法证明归属的 DevTools 或浏览器调试残留会继续保持 `inspect-only`。
+公开包包含：
+
+- [`SKILL.md`](./SKILL.md)
+- [`agents/openai.yaml`](./agents/openai.yaml)
+- PowerShell 盘点、分类、策略、账本和清理脚本
+- macOS / Linux 的 shell wrapper
+- 中英文文档
+- Pester 测试
 
 ## 测试
 
@@ -167,6 +121,7 @@ bash "$CODEX_HOME/skills/codex-cleaning-temporary-processes/scripts/cleanup-temp
 Invoke-Pester -Path .\scripts\process-inventory.Tests.ps1 -PassThru
 Invoke-Pester -Path .\scripts\process-classification.Tests.ps1 -PassThru
 Invoke-Pester -Path .\scripts\cleanup-policy.Tests.ps1 -PassThru
+Invoke-Pester -Path .\scripts\thread-ownership-ledger.Tests.ps1 -PassThru
 Invoke-Pester -Path .\scripts\cleanup-temporary-processes.Tests.ps1 -PassThru
 Invoke-Pester -Path .\scripts\skill-trigger-contract.Tests.ps1 -PassThru
 ```

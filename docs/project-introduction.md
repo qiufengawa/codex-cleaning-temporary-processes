@@ -1,27 +1,19 @@
 # Project Introduction
 
-Codex Cleaning Temporary Processes is a public, cross-platform package for safe cleanup of temporary development processes.
+Codex Cleaning Temporary Processes is a public, cross-platform skill for safe cleanup of temporary development processes.
 
-The package supports two installation modes:
+The package is intentionally pure skill, not a plugin. Its goal is to give Codex a reusable best-effort process-hygiene workflow that can be picked up through implicit invocation when coding work creates temporary process residue.
 
-- plugin-style installation keeps `.codex-plugin/plugin.json`, `hooks.json`, and `hooks/` at the repo root and enables automatic strong triggering
-- skill-style installation under `CODEX_HOME/skills` exposes the skill text and scripts but does not activate automatic hook behavior on its own
+The skill is designed around finished checkpoints rather than task-end memory. After a finished high-risk step, a finished automation checkpoint, a finished subagent, or a finished batch of one-shot commands, Codex should reconsider whether cleanup is now safe and useful.
 
-That split is user-facing and intentional. The installed plugin package handles automatic fixed checkpoints, while `SKILL.md` remains the manual fallback guide.
+The supported scope is broader than a single language. The skill can reason about mainstream toolchains such as npm, vite, vitest, cargo, tauri, pytest, dotnet, Go, Ruby, PHP, and browser automation helpers, while still keeping the cleanup policy conservative.
 
-The fixed-checkpoint model is deliberate. Instead of waiting for Codex to remember cleanup when the task ends, the package re-evaluates after concrete finished checkpoints such as a high-risk tool step, a DevTools or browser-debug checkpoint, a subagent completion, a one-shot helper backlog, or session end.
-
-The safety model stays narrow:
+Safety remains the core design priority:
 
 - inspect first when evidence is weak
-- clean only high-confidence leftovers during checkpoint cleanup
-- require current-task lineage or confirmed current-thread ownership for explicit automation
-- never treat workspace match alone as enough for explicit automation
-- never let current-thread ownership broaden cleanup for generic runtimes
-- preserve active Codex shells, ordinary user apps, ambiguous runtimes, and likely reusable dev services
+- only clean high-confidence leftovers
+- keep explicit automation gated by current-task lineage or confirmed current-thread ownership
+- never let workspace match alone authorize explicit automation cleanup
+- preserve active shells, ordinary user apps, ambiguous runtimes, and likely reusable dev services
 
-The package also keeps multi-project isolation explicit. Workspace-backed runtime cleanup must still match the current workspace or a task-owned ancestor, and explicit automation from another conversation or repository remains `inspect-only` unless ownership is proven.
-
-For same-thread explicit automation recovery, local runtime state uses sanitized thread identifiers and normalized workspace values. That local state supports safe lookup and filename handling, but it does not widen cleanup authority.
-
-This repository includes the public docs, metadata, plugin manifest, hook definitions, PowerShell scripts, shell wrapper, and tests needed to package the behavior for Windows, macOS, and Linux.
+Multi-project isolation is explicit. A process from project A must not be reclaimed just because project B happens to run in another Codex conversation. Workspace-backed evidence, ancestor ownership, and explicit-automation rules must all stay narrow.

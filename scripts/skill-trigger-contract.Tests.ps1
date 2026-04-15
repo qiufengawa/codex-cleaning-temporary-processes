@@ -11,100 +11,104 @@ Describe 'public skill trigger contract' {
     $triggerScenariosEnglish = Get-Content -Raw -Encoding UTF8 (Join-Path $repoRoot 'docs\trigger-regression-scenarios.md')
     $triggerScenariosChinese = Get-Content -Raw -Encoding UTF8 (Join-Path $repoRoot 'docs\trigger-regression-scenarios.zh-CN.md')
 
-    $autoStrongTriggerZh = -join [char[]](0x81EA, 0x52A8, 0x5F3A, 0x89E6, 0x53D1)
-    $manualFallbackZh = -join [char[]](0x624B, 0x52A8, 0x515C, 0x5E95)
-    $installZh = -join [char[]](0x5B89, 0x88C5)
-    $pluginStyleInstallZh = -join [char[]](0x63D2, 0x4EF6, 0x5F0F, 0x5B89, 0x88C5)
-    $skillStyleInstallZh = 'skill ' + (-join [char[]](0x5F0F, 0x5B89, 0x88C5))
-    $fixedCheckpointZh = -join [char[]](0x56FA, 0x5B9A, 0x68C0, 0x67E5, 0x70B9)
-    $sessionEndZh = -join [char[]](0x4F1A, 0x8BDD, 0x7ED3, 0x675F)
+    $bestEffortZh = -join [char[]](0x6700, 0x4F73, 0x52AA, 0x529B)
+    $implicitZh = -join [char[]](0x9690, 0x5F0F)
+    $checkpointZh = -join [char[]](0x68C0, 0x67E5, 0x70B9)
     $multiProjectIsolationZh = -join [char[]](0x591A, 0x9879, 0x76EE, 0x9694, 0x79BB)
-
-    $autoStrongTriggerZhPattern = [regex]::Escape($autoStrongTriggerZh)
-    $manualFallbackZhPattern = [regex]::Escape($manualFallbackZh)
-    $installZhPattern = [regex]::Escape($installZh)
-    $pluginStyleInstallZhPattern = [regex]::Escape($pluginStyleInstallZh)
-    $skillStyleInstallZhPattern = [regex]::Escape($skillStyleInstallZh)
-    $fixedCheckpointZhPattern = [regex]::Escape($fixedCheckpointZh)
-    $sessionEndZhPattern = [regex]::Escape($sessionEndZh)
-    $multiProjectIsolationZhPattern = [regex]::Escape($multiProjectIsolationZh)
+    $pluginStyleZh = -join [char[]](0x63D2, 0x4EF6, 0x5F0F)
+    $crossPlatformZh = -join [char[]](0x8DE8, 0x5E73, 0x53F0)
+    $subagentZh = -join [char[]](0x5B50, 0x4EE3, 0x7406)
   }
 
-  It 'keeps the skill positioned as plugin-style automatic triggering with manual fallback' {
-    $skillMarkdown | Should Match '(?m)^description: .*manual'
-    $skillMarkdown | Should Match 'plugin-style installation'
-    $skillMarkdown | Should Match '\.codex-plugin/plugin\.json'
-    $skillMarkdown | Should Match 'CODEX_HOME/skills'
-    $skillMarkdown | Should Match 'fixed checkpoints'
-    $skillMarkdown | Should Match 'session end'
-    $skillMarkdown | Should Match 'sanitized thread identifiers'
+  It 'positions the package as a pure skill instead of a plugin-plus-skill bundle' {
+    $skillMarkdown | Should Match '(?m)^description: Use when'
+    $skillMarkdown | Should Match 'best-effort'
+    $skillMarkdown | Should Match 'implicit'
+    $skillMarkdown | Should Match 'checkpoint'
+    $skillMarkdown | Should Match 'multi-project'
+    $skillMarkdown | Should Not Match 'plugin-style'
+    $skillMarkdown | Should Not Match '\.codex-plugin/plugin\.json'
+    $skillMarkdown | Should Not Match 'hooks\.json'
+    $skillMarkdown | Should Not Match 'hooks/'
   }
 
-  It 'keeps implicit invocation enabled and the metadata install-mode aware' {
+  It 'keeps implicit invocation enabled without promising host-hook automation' {
     $metadataYaml | Should Match 'allow_implicit_invocation:\s*true'
-    $metadataYaml | Should Match 'plugin-style mode'
-    $metadataYaml | Should Match '\.codex-plugin/plugin\.json'
-    $metadataYaml | Should Match 'CODEX_HOME/skills'
-    $metadataYaml | Should Match 'fixed checkpoints'
-    $metadataYaml | Should Match 'session end'
-    $metadataYaml | Should Match 'manual fallback guidance'
-    $metadataYaml | Should Match 'multi-project isolation'
+    $metadataYaml | Should Match 'checkpoint'
+    $metadataYaml | Should Match 'best-effort'
+    $metadataYaml | Should Match 'implicit'
+    $metadataYaml | Should Match 'multi-project'
+    $metadataYaml | Should Not Match 'plugin-style'
+    $metadataYaml | Should Not Match '\.codex-plugin/plugin\.json'
+    $metadataYaml | Should Not Match 'hooks'
+    $metadataYaml | Should Not Match 'session end'
   }
 
-  It 'documents the plugin-style and skill-style split in the English docs' {
-    $readmeEnglish | Should Match '## Automatic Strong Triggering'
-    $readmeEnglish | Should Match '## Manual Fallback'
-    $readmeEnglish | Should Match '## Cross-Platform Packaging'
+  It 'documents a pure skill installation path in the English docs' {
+    $readmeEnglish | Should Match '## Installation'
+    $readmeEnglish | Should Match '## Trigger Cadence'
+    $readmeEnglish | Should Match '## Safety Model'
     $readmeEnglish | Should Match '## Multi-Project Isolation'
-    $readmeEnglish | Should Match 'plugin-style installation'
-    $readmeEnglish | Should Match 'skill-style installation'
-    $readmeEnglish | Should Match '\.codex-plugin/plugin\.json'
-    $readmeEnglish | Should Match 'hooks/'
+    $readmeEnglish | Should Match 'best-effort'
+    $readmeEnglish | Should Match 'implicit invocation'
     $readmeEnglish | Should Match 'CODEX_HOME/skills'
-    $readmeEnglish | Should Match 'fixed checkpoints'
-    $readmeEnglish | Should Match 'session end'
-    $readmeEnglish | Should Match 'sanitized thread identifiers'
-    $readmeEnglish | Should Match 'explicitly ask Codex to use `\$codex-cleaning-temporary-processes`'
+    $readmeEnglish | Should Match 'checkpoint-cleanup'
+    $readmeEnglish | Should Match 'npm'
+    $readmeEnglish | Should Match 'vite'
+    $readmeEnglish | Should Match 'vitest'
+    $readmeEnglish | Should Match 'cargo'
+    $readmeEnglish | Should Match 'tauri'
+    $readmeEnglish | Should Not Match 'plugin-style'
+    $readmeEnglish | Should Not Match '\.codex-plugin/plugin\.json'
+    $readmeEnglish | Should Not Match 'hooks/'
 
-    $projectIntroEnglish | Should Match 'plugin-style installation'
-    $projectIntroEnglish | Should Match 'skill-style installation'
-    $projectIntroEnglish | Should Match '\.codex-plugin/plugin\.json'
-    $projectIntroEnglish | Should Match 'CODEX_HOME/skills'
-    $projectIntroEnglish | Should Match 'fixed checkpoints'
+    $projectIntroEnglish | Should Match 'skill'
+    $projectIntroEnglish | Should Match 'best-effort'
+    $projectIntroEnglish | Should Match 'checkpoint'
+    $projectIntroEnglish | Should Match 'cross-platform'
+    $projectIntroEnglish | Should Not Match 'plugin-style'
   }
 
-  It 'documents the install-mode split in the Chinese docs' {
-    $readmeChinese | Should Match $autoStrongTriggerZhPattern
-    $readmeChinese | Should Match $manualFallbackZhPattern
-    $readmeChinese | Should Match $pluginStyleInstallZhPattern
-    $readmeChinese | Should Match $skillStyleInstallZhPattern
-    $readmeChinese | Should Match $installZhPattern
-    $readmeChinese | Should Match $fixedCheckpointZhPattern
-    $readmeChinese | Should Match $sessionEndZhPattern
-    $readmeChinese | Should Match $multiProjectIsolationZhPattern
-    $readmeChinese | Should Match '\.codex-plugin/plugin\.json'
-    $readmeChinese | Should Match 'CODEX_HOME/skills'
+  It 'documents a pure skill installation path in the Chinese docs' {
+    $readmeChinese | Should Match 'skill'
+    $readmeChinese | Should Match ([regex]::Escape($bestEffortZh))
+    $readmeChinese | Should Match ([regex]::Escape($implicitZh))
+    $readmeChinese | Should Match ([regex]::Escape($checkpointZh))
+    $readmeChinese | Should Match ([regex]::Escape($multiProjectIsolationZh))
+    $readmeChinese | Should Not Match ([regex]::Escape($pluginStyleZh))
+    $readmeChinese | Should Not Match '\.codex-plugin/plugin\.json'
+    $readmeChinese | Should Not Match 'hooks/'
 
-    $projectIntroChinese | Should Match $pluginStyleInstallZhPattern
-    $projectIntroChinese | Should Match $skillStyleInstallZhPattern
-    $projectIntroChinese | Should Match $fixedCheckpointZhPattern
-    $projectIntroChinese | Should Match $sessionEndZhPattern
+    $projectIntroChinese | Should Match 'skill'
+    $projectIntroChinese | Should Match ([regex]::Escape($bestEffortZh))
+    $projectIntroChinese | Should Match ([regex]::Escape($checkpointZh))
+    $projectIntroChinese | Should Match ([regex]::Escape($crossPlatformZh))
+    $projectIntroChinese | Should Not Match ([regex]::Escape($pluginStyleZh))
   }
 
-  It 'keeps the public trigger scenario docs aligned with plugin-style checkpoints and manual fallback' {
-    $triggerScenariosEnglish | Should Match 'plugin-style installation'
-    $triggerScenariosEnglish | Should Match '\.codex-plugin/plugin\.json'
-    $triggerScenariosEnglish | Should Match 'CODEX_HOME/skills'
-    $triggerScenariosEnglish | Should Match 'fixed-checkpoint based'
-    $triggerScenariosEnglish | Should Match 'session end'
+  It 'keeps the public trigger scenarios aligned with pure skill checkpoints' {
+    $triggerScenariosEnglish | Should Match 'best-effort'
+    $triggerScenariosEnglish | Should Match 'implicit invocation'
+    $triggerScenariosEnglish | Should Match 'finished checkpoint'
+    $triggerScenariosEnglish | Should Match 'subagent'
     $triggerScenariosEnglish | Should Match 'backlog relief'
-    $triggerScenariosEnglish | Should Match 'manual fallback'
+    $triggerScenariosEnglish | Should Not Match 'plugin-style'
+    $triggerScenariosEnglish | Should Not Match '\.codex-plugin/plugin\.json'
 
-    $triggerScenariosChinese | Should Match $pluginStyleInstallZhPattern
-    $triggerScenariosChinese | Should Match $skillStyleInstallZhPattern
-    $triggerScenariosChinese | Should Match $fixedCheckpointZhPattern
-    $triggerScenariosChinese | Should Match $sessionEndZhPattern
-    $triggerScenariosChinese | Should Match $manualFallbackZhPattern
-    $triggerScenariosChinese | Should Match 'CODEX_HOME/skills'
+    $triggerScenariosChinese | Should Match ([regex]::Escape($bestEffortZh))
+    $triggerScenariosChinese | Should Match ([regex]::Escape($implicitZh))
+    $triggerScenariosChinese | Should Match ([regex]::Escape($checkpointZh))
+    $triggerScenariosChinese | Should Match ([regex]::Escape($subagentZh))
+    $triggerScenariosChinese | Should Not Match ([regex]::Escape($pluginStyleZh))
+  }
+
+  It 'does not ship plugin manifests or hook entrypoints in the public package' {
+    Test-Path (Join-Path $repoRoot '.codex-plugin\plugin.json') | Should Be $false
+    Test-Path (Join-Path $repoRoot '.agents\plugins\marketplace.json') | Should Be $false
+    Test-Path (Join-Path $repoRoot 'hooks.json') | Should Be $false
+    Test-Path (Join-Path $repoRoot 'hooks') | Should Be $false
+    Test-Path (Join-Path $repoRoot 'scripts\hook-trigger-policy.ps1') | Should Be $false
+    Test-Path (Join-Path $repoRoot 'scripts\invoke-hook-trigger.ps1') | Should Be $false
+    Test-Path (Join-Path $repoRoot 'scripts\trigger-runtime-state.ps1') | Should Be $false
   }
 }
