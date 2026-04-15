@@ -39,7 +39,7 @@ $script:HighConfidenceShellPatterns = @(
 
 $script:WorkspaceScopedShellPatterns = @(
   "\b(npm|npx|pnpm|pnpx|yarn|bun|bunx)(\.cmd|\.exe)?\b.*\b(run|exec|dev|build|preview|test|start|serve|watch)\b",
-  "\b(vite|vitest)\b(?:\s|$)",
+  "(?:^|[\s;&|`"])(?:vite|vitest)(?:\s+(dev|preview|test|run|watch)\b|\s+--[A-Za-z0-9-]+(?:[=\s][^\s`"]+)?|\s*(?:`"|$))",
   "\b(next|nuxt|astro|webpack|rollup|parcel|storybook|cypress|jest|turbo|nx|nest|remix|svelte-kit)\b.*\b(dev|build|preview|test|start|serve|watch|run|open)\b",
   "\b(tsx|ts-node|ts-node-dev|nodemon|vite-node)\b.*\b(watch|dev|start|serve|run)\b",
   "\bcargo(\.exe)?\b.*\b(test|run|check|build|tauri|clippy)\b",
@@ -149,7 +149,7 @@ function Get-WorkspacePattern {
     $pathPattern = '[\\/]' + $pathPattern
   }
 
-  return '(?i)(?<![A-Za-z0-9_.-])' + $pathPattern + '(?=$|[\\/''"\s])'
+  return '(?i)(?<![A-Za-z0-9_.-])' + $pathPattern + '(?=$|[\\/''"\s;&|])'
 }
 
 function Test-PatternList {
@@ -236,12 +236,6 @@ function Test-ProcessAnchorsTaskOwnership {
   }
 
   if (Test-NamePatternList -Value $name -Patterns $script:ProtectedShellNamePatterns) {
-    $parentName = Get-ParentProcessName -ParentProcessId ([int]$Process.ParentProcessId) -ProcessById $ProcessById
-
-    if ($parentName -match $script:CodexParentNamePattern) {
-      return $false
-    }
-
     if ($commandLine -match "Long-lived PowerShell AST parser|ConvertFrom-Json") {
       return $false
     }

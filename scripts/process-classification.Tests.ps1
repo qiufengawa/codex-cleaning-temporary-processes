@@ -341,6 +341,41 @@ Describe 'Get-TemporaryProcessClassifications' {
     $child[0].Killable | Should Be $true
   }
 
+  It 'classifies relative direct tools through a workspace-backed Codex shell' {
+    . $libraryPath
+
+    $processes = @(
+      [pscustomobject]@{
+        ProcessId = 145
+        ParentProcessId = 1
+        Name = 'Codex'
+        CommandLine = 'Codex.exe'
+      }
+      [pscustomobject]@{
+        ProcessId = 146
+        ParentProcessId = 145
+        Name = 'powershell.exe'
+        CommandLine = 'powershell.exe -NoProfile -Command "Set-Location C:\Repo; pnpm test"'
+      }
+      [pscustomobject]@{
+        ProcessId = 147
+        ParentProcessId = 146
+        Name = 'pnpm'
+        CommandLine = 'pnpm test'
+      }
+    )
+
+    $result = @(Get-TemporaryProcessClassifications -Processes $processes -Workspace 'C:\Repo')
+    $shell = @($result | Where-Object { $_.ProcessId -eq 146 })
+    $child = @($result | Where-Object { $_.ProcessId -eq 147 })
+
+    $shell.Count | Should Be 1
+    $shell[0].Category | Should Be 'protected-shell'
+    $child.Count | Should Be 1
+    $child[0].Category | Should Be 'dev-tool'
+    $child[0].Killable | Should Be $true
+  }
+
   It 'classifies relative python runtimes through a workspace-owned parent shell' {
     . $libraryPath
 
@@ -542,6 +577,23 @@ Describe 'Get-TemporaryProcessClassifications' {
         ParentProcessId = 1
         Name = 'bash'
         CommandLine = '/bin/bash -lc "cd /repo && next telemetry disable"'
+      }
+    )
+
+    $result = @(Get-TemporaryProcessClassifications -Processes $processes -Workspace '/repo')
+
+    $result.Count | Should Be 0
+  }
+
+  It 'does not classify shell wrappers that only mention vitest as an argument' {
+    . $libraryPath
+
+    $processes = @(
+      [pscustomobject]@{
+        ProcessId = 148
+        ParentProcessId = 1
+        Name = 'bash'
+        CommandLine = '/bin/bash -lc "cd /repo && grep vitest package.json"'
       }
     )
 

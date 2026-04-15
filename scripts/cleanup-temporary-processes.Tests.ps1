@@ -118,6 +118,40 @@ function Get-CleanupDecision {
 }
 
 Describe 'cleanup-temporary-processes entrypoint' {
+  It 'reports deduped killableRoots in inspect mode' {
+    $preCleanupProcesses = @(
+      [pscustomobject]@{
+        ProcessId = 101
+        ParentProcessId = 1
+        Name = 'node'
+        CommandLine = 'node temp-root.js'
+        Killable = $true
+        DesiredDecision = 'cleanup-now'
+        DecisionReason = 'temporary tool'
+      },
+      [pscustomobject]@{
+        ProcessId = 102
+        ParentProcessId = 101
+        Name = 'node'
+        CommandLine = 'node temp-child.js'
+        Killable = $true
+        DesiredDecision = 'cleanup-now'
+        DecisionReason = 'temporary tool child'
+      }
+    )
+
+    $scriptUnderTest = New-CleanupEntrypointHarness `
+      -HarnessRoot (Join-Path $TestDrive 'cleanup-entrypoint-inspect-roots') `
+      -PreCleanupProcesses $preCleanupProcesses `
+      -PostCleanupProcesses $preCleanupProcesses `
+      -FailStopIds @()
+
+    $output = & $scriptUnderTest -Mode inspect -AsJson | ConvertFrom-Json
+
+    $output.matchedCount | Should Be 2
+    $output.killableRoots | Should Be 1
+  }
+
   It 'reports post-cleanup state and failed kill ids for <Mode>' -TestCases @(
     @{ Mode = 'cleanup' },
     @{ Mode = 'checkpoint-cleanup' }

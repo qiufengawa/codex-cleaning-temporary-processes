@@ -76,6 +76,23 @@ function Add-ProcessTreeIds {
   $null = $OrderedIds.Add($RootId)
 }
 
+function Get-RootRecordCount {
+  param(
+    [object[]]$Records
+  )
+
+  $recordIds = New-Object 'System.Collections.Generic.HashSet[int]'
+  foreach ($record in $Records) {
+    $null = $recordIds.Add([int]$record.ProcessId)
+  }
+
+  return @(
+    $Records | Where-Object {
+      -not $recordIds.Contains([int]$_.ParentProcessId)
+    }
+  ).Count
+}
+
 $snapshot = Get-ClassifiedTemporaryProcessSnapshot -Workspace $Workspace -CurrentProcessId $PID
 $classified = @($snapshot.Classified)
 
@@ -125,7 +142,7 @@ if ($Mode -in @("cleanup", "checkpoint-cleanup")) {
     mode          = $Mode
     workspace     = $Workspace
     matchedCount  = @($postClassified).Count
-    killableRoots = @($postClassified | Where-Object { $_.Decision -eq "cleanup-now" }).Count
+    killableRoots = Get-RootRecordCount -Records @($postClassified | Where-Object { $_.Decision -eq "cleanup-now" })
     decisionCounts = [pscustomobject]@{
       cleanupNow = @($postClassified | Where-Object { $_.Decision -eq "cleanup-now" }).Count
       inspectOnly = @($postClassified | Where-Object { $_.Decision -eq "inspect-only" }).Count
@@ -142,7 +159,7 @@ if ($Mode -in @("cleanup", "checkpoint-cleanup")) {
     mode          = $Mode
     workspace     = $Workspace
     matchedCount  = @($classified).Count
-    killableRoots = @(($classified | Where-Object { $_.Killable })).Count
+    killableRoots = Get-RootRecordCount -Records @($classified | Where-Object { $_.Killable })
     decisionCounts = [pscustomobject]@{
       cleanupNow = @($classified | Where-Object { $_.Decision -eq "cleanup-now" }).Count
       inspectOnly = @($classified | Where-Object { $_.Decision -eq "inspect-only" }).Count
