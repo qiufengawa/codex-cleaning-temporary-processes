@@ -20,7 +20,18 @@ $script:CheckpointLongLivedMarkers = @(
   "\bpreview\b",
   "\bwatch\b",
   "\brunserver\b",
-  "\bstart\b"
+  "\bstart\b",
+  "\bpytest-watch\b",
+  "\bptw\b",
+  "\buvicorn\b",
+  "\bgunicorn\b",
+  "\b(run|exec)\b\s+storybook\b",
+  "\bstorybook\b.*\b(dev|start)\b",
+  "\bbootrun\b",
+  "\bspring-boot:run\b",
+  "\bquarkus:dev\b",
+  "\brails\b.*\bserver\b",
+  "\bphx\.server\b"
 )
 
 $script:CheckpointOneShotMarkers = @(
@@ -30,7 +41,13 @@ $script:CheckpointOneShotMarkers = @(
   "\bpublish\b",
   "\bpackage\b",
   "\blint\b",
-  "\bcompile\b"
+  "\bcompile\b",
+  "\bpytest\b(?!-)",
+  "\bvitest\b(?!-)",
+  "\brspec\b",
+  "\bctest\b",
+  "\bclippy\b",
+  "\bverify\b"
 )
 
 function Test-CleanupPolicyPatternList {

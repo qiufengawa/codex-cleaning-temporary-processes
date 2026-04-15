@@ -10,7 +10,12 @@ The operating model stays conservative:
 
 - inspect first when evidence is weak
 - clean only high-confidence leftovers during checkpoint cleanup
+- allow conservative ownership inheritance only from workspace-backed task ancestors with known dev or test markers
 - preserve active Codex shells, ordinary user apps, and likely reusable dev services
 - reserve the final sweep for temporary process trees that are definitely no longer needed
+
+Cleanup modes re-inspect the process table after kill attempts and report both what was reclaimed and what failed to stop, so downstream callers can see the real post-cleanup state instead of a stale pre-cleanup snapshot.
+
+The `inspect` view is intentionally narrower than a full process dump: it reports classified records, while weak-signal or unmatched processes may be preserved without being listed. Direct browser-process matching currently focuses on Chromium and Edge-family remote-debug sessions; non-Chromium automation is primarily identified through explicit helper or wrapper processes.
 
 This repository includes the skill definition, agent metadata, PowerShell scripts, a shell wrapper, and Pester tests needed to reuse or adapt the skill in other Codex environments.

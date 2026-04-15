@@ -135,6 +135,166 @@ Describe 'Get-CleanupDecision' {
     $decision.Decision | Should Be 'inspect-only'
   }
 
+  It 'marks pytest runtimes for cleanup during checkpoint cleanup' {
+    . $classificationLibraryPath
+    . $policyLibraryPath
+
+    $processes = @(
+      [pscustomobject]@{
+        ProcessId = 210
+        ParentProcessId = 1
+        Name = 'python'
+        CommandLine = 'python -m pytest /repo/tests -q'
+      }
+    )
+
+    $record = @(Get-TemporaryProcessClassifications -Processes $processes -Workspace '/repo')[0]
+    $decision = Get-CleanupDecision -Record $record -Mode 'checkpoint-cleanup'
+
+    $decision.Decision | Should Be 'cleanup-now'
+    $decision.Reason | Should Be 'One-shot build or test command finished for this step'
+  }
+
+  It 'keeps pytest-watch runtimes as inspect-only during checkpoint cleanup' {
+    . $classificationLibraryPath
+    . $policyLibraryPath
+
+    $processes = @(
+      [pscustomobject]@{
+        ProcessId = 211
+        ParentProcessId = 1
+        Name = 'python'
+        CommandLine = 'python -m pytest-watch /repo/tests'
+      }
+    )
+
+    $record = @(Get-TemporaryProcessClassifications -Processes $processes -Workspace '/repo')[0]
+    $decision = Get-CleanupDecision -Record $record -Mode 'checkpoint-cleanup'
+
+    $decision.Decision | Should Be 'inspect-only'
+    $decision.Reason | Should Be 'Potentially reusable long-lived dev process'
+  }
+
+  It 'marks vitest run processes for cleanup during checkpoint cleanup' {
+    . $classificationLibraryPath
+    . $policyLibraryPath
+
+    $processes = @(
+      [pscustomobject]@{
+        ProcessId = 212
+        ParentProcessId = 1
+        Name = 'vitest'
+        CommandLine = 'vitest run --config /repo/vitest.config.ts'
+      }
+    )
+
+    $record = @(Get-TemporaryProcessClassifications -Processes $processes -Workspace '/repo')[0]
+    $decision = Get-CleanupDecision -Record $record -Mode 'checkpoint-cleanup'
+
+    $decision.Decision | Should Be 'cleanup-now'
+    $decision.Reason | Should Be 'One-shot build or test command finished for this step'
+  }
+
+  It 'keeps npm storybook shells as inspect-only during checkpoint cleanup' {
+    . $classificationLibraryPath
+    . $policyLibraryPath
+
+    $processes = @(
+      [pscustomobject]@{
+        ProcessId = 213
+        ParentProcessId = 1
+        Name = 'cmd.exe'
+        CommandLine = 'cmd.exe /c npm run storybook -- --config-dir C:\Repo\.storybook'
+      }
+    )
+
+    $record = @(Get-TemporaryProcessClassifications -Processes $processes -Workspace 'C:\Repo')[0]
+    $decision = Get-CleanupDecision -Record $record -Mode 'checkpoint-cleanup'
+
+    $decision.Decision | Should Be 'inspect-only'
+    $decision.Reason | Should Be 'Potentially reusable long-lived dev process'
+  }
+
+  It 'marks cargo clippy processes for cleanup during checkpoint cleanup' {
+    . $classificationLibraryPath
+    . $policyLibraryPath
+
+    $processes = @(
+      [pscustomobject]@{
+        ProcessId = 214
+        ParentProcessId = 1
+        Name = 'cargo'
+        CommandLine = 'cargo clippy --manifest-path /repo/Cargo.toml --all-targets'
+      }
+    )
+
+    $record = @(Get-TemporaryProcessClassifications -Processes $processes -Workspace '/repo')[0]
+    $decision = Get-CleanupDecision -Record $record -Mode 'checkpoint-cleanup'
+
+    $decision.Decision | Should Be 'cleanup-now'
+    $decision.Reason | Should Be 'One-shot build or test command finished for this step'
+  }
+
+  It 'keeps Spring Boot run processes as inspect-only during checkpoint cleanup' {
+    . $classificationLibraryPath
+    . $policyLibraryPath
+
+    $processes = @(
+      [pscustomobject]@{
+        ProcessId = 215
+        ParentProcessId = 1
+        Name = 'mvn'
+        CommandLine = 'mvn spring-boot:run -f /repo/pom.xml'
+      }
+    )
+
+    $record = @(Get-TemporaryProcessClassifications -Processes $processes -Workspace '/repo')[0]
+    $decision = Get-CleanupDecision -Record $record -Mode 'checkpoint-cleanup'
+
+    $decision.Decision | Should Be 'inspect-only'
+    $decision.Reason | Should Be 'Potentially reusable long-lived dev process'
+  }
+
+  It 'marks Maven verify processes for cleanup during checkpoint cleanup' {
+    . $classificationLibraryPath
+    . $policyLibraryPath
+
+    $processes = @(
+      [pscustomobject]@{
+        ProcessId = 216
+        ParentProcessId = 1
+        Name = 'mvn'
+        CommandLine = 'mvn verify -f /repo/pom.xml'
+      }
+    )
+
+    $record = @(Get-TemporaryProcessClassifications -Processes $processes -Workspace '/repo')[0]
+    $decision = Get-CleanupDecision -Record $record -Mode 'checkpoint-cleanup'
+
+    $decision.Decision | Should Be 'cleanup-now'
+    $decision.Reason | Should Be 'One-shot build or test command finished for this step'
+  }
+
+  It 'keeps uvicorn runtimes as inspect-only during checkpoint cleanup' {
+    . $classificationLibraryPath
+    . $policyLibraryPath
+
+    $processes = @(
+      [pscustomobject]@{
+        ProcessId = 217
+        ParentProcessId = 1
+        Name = 'uvicorn'
+        CommandLine = 'uvicorn app.main:app --reload --app-dir /repo'
+      }
+    )
+
+    $record = @(Get-TemporaryProcessClassifications -Processes $processes -Workspace '/repo')[0]
+    $decision = Get-CleanupDecision -Record $record -Mode 'checkpoint-cleanup'
+
+    $decision.Decision | Should Be 'inspect-only'
+    $decision.Reason | Should Be 'Potentially reusable long-lived dev process'
+  }
+
   It 'preserves protected shells during checkpoint cleanup' {
     . $classificationLibraryPath
     . $policyLibraryPath

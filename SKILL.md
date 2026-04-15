@@ -11,6 +11,8 @@ Treat process hygiene as part of task completion across Windows, macOS, and Linu
 
 Examples in this skill are representative, not exhaustive. The rule is about temporary dev processes by role and evidence, not one hard-coded command list.
 
+`inspect` reports classified records rather than a full dump of every running process. Weak-signal or unmatched processes may be preserved silently and omitted from the output.
+
 Use this skill proactively. Do not wait for the user to complain about memory pressure if the current turn used shells, builds, tests, browser debugging, language runtimes, or subagents that may leave temporary processes behind.
 
 Do not wait for the entire task to finish if a long task contains multiple risky tool steps. Reclaim temporary processes in smaller checkpoints whenever a high-risk step has clearly finished and those processes no longer have reuse value.
@@ -37,6 +39,7 @@ Require strong evidence before cleanup:
 - explicit automation or remote-debug flags
 - clear DevTools MCP markers
 - current-workspace match plus dev, test, build, preview, serve, run, or watch markers
+- for relative child commands, a parent or ancestor that already has both workspace evidence and known dev or test markers
 
 If only one weak signal is present, inspect and report instead of killing.
 
@@ -52,6 +55,7 @@ Never kill:
 - plain interactive `powershell`, `pwsh`, `bash`, `zsh`, `sh`, or `fish` with no task-specific arguments
 - normal user browsers without automation or remote-debug flags
 - user-owned runtimes such as Node, Python, Java, Ruby, PHP, Go, or .NET when they do not match current task work
+- descendants that only trace back to Codex shell ancestry without real workspace-backed task evidence
 - anything you are not highly confident is temporary
 
 When in doubt, inspect first and report instead of killing.
@@ -97,7 +101,9 @@ This skill is meant for mainstream development workflows across multiple ecosyst
 - launchers with `npx-cli.js -y chrome-devtools-mcp@latest`
 - wrapper shells whose command lines explicitly include `chrome-devtools-mcp`, `playwright`, or `--remote-debugging-port`
 - temporary shells or runtime processes that clearly show dev, build, preview, test, serve, runserver, or watch modes for the current workspace
+- relative child processes only when a parent or ancestor is already workspace-backed and matches known dev, test, build, or serve markers
 - browser processes only when command lines clearly include automation flags such as `--remote-debugging-port`, `--headless`, or `playwright`
+- direct browser-process matching currently targets Chromium and Edge-family browser names; non-Chromium automation is mainly surfaced through helper or wrapper processes
 
 For generic runtimes, prefer passing `-Workspace` so the script can distinguish current-task processes from unrelated user apps.
 
@@ -118,7 +124,7 @@ For ordinary build, test, serve, and runtime processes, omit cleanup when you do
 3. Clean only the temporary leftovers the current step no longer needs.
 4. Re-inspect and confirm the process tree is gone or reduced as expected.
 5. At true task end, optionally run full `cleanup` for the final sweep.
-6. Report what was killed and what was intentionally preserved.
+6. Report what was killed, what failed to stop, and what was intentionally preserved.
 
 Use the bundled scripts:
 
@@ -158,6 +164,7 @@ Pass `-Workspace` whenever a repo path helps distinguish current task-owned shel
 - Killing plain interactive shells that belong to the active Codex session
 - Killing every tool wrapper shell instead of limiting checkpoint cleanup to one-shot commands or explicit automation wrappers
 - Killing normal browsers without remote-debug or headless flags
+- Treating Codex-owned ancestry alone as sufficient proof that a relative child process belongs to the current task
 - Cleaning before test or build output is finished
 - Waiting until the whole task ends even though several finished tool steps already left dead temporary processes behind
 - Forgetting the second inspection pass after cleanup
@@ -172,4 +179,4 @@ Pass `-Workspace` whenever a repo path helps distinguish current task-owned shel
 - `scripts/cleanup-temporary-processes.sh`
 - `inspect` mode lists temporary candidates and protected process classes
 - `checkpoint-cleanup` mode kills only high-confidence step-finished leftovers
-- `cleanup` mode kills only high-confidence temporary targets and their descendants
+- `cleanup` mode kills only high-confidence temporary targets and their descendants, then reports the post-cleanup snapshot plus any failed kill ids

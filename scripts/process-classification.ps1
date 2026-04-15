@@ -39,7 +39,8 @@ $script:HighConfidenceShellPatterns = @(
 
 $script:WorkspaceScopedShellPatterns = @(
   "\b(npm|npx|pnpm|pnpx|yarn|bun|bunx)(\.cmd|\.exe)?\b.*\b(run|exec|dev|build|preview|test|start|serve|watch)\b",
-  "\b(next|nuxt|astro|webpack|rollup|parcel|storybook|cypress|jest|turbo|nx|nest|remix|svelte-kit)\b",
+  "\b(vite|vitest)\b(?:\s|$)",
+  "\b(next|nuxt|astro|webpack|rollup|parcel|storybook|cypress|jest|turbo|nx|nest|remix|svelte-kit)\b.*\b(dev|build|preview|test|start|serve|watch|run|open)\b",
   "\b(tsx|ts-node|ts-node-dev|nodemon|vite-node)\b.*\b(watch|dev|start|serve|run)\b",
   "\bcargo(\.exe)?\b.*\b(test|run|check|build|tauri|clippy)\b",
   "\b(py(thon)?|uv|uvx|poetry|pipenv)(\.exe)?\b.*\b(pytest|uvicorn|gunicorn|flask|django|runserver|serve|watch|test|dev)\b",
@@ -59,17 +60,13 @@ $script:WorkspaceScopedShellPatterns = @(
   "\b(swift|dart|flutter)\b.*\b(run|test|build|serve)\b"
 )
 
-$script:HighConfidenceNodePatterns = @(
-  "\b(vite|vitest)\b",
-  "node_modules[/\\](vite|vitest)[/\\]"
-)
-
 $script:WorkspaceScopedNodePatterns = @(
   "\bnpm(\.cmd)?\b.*\b(run|exec)\b.*\b(dev|build|preview|test)\b",
   "\b(pnpm|pnpx|yarn|bun|bunx)(\.cmd|\.exe)?\b.*\b(dev|build|preview|test|start|serve|watch)\b",
-  "\b(next|nuxt|astro|webpack|rollup|parcel|storybook|cypress|jest|turbo|nx|nest|remix|svelte-kit)\b",
+  "\b(next|nuxt|astro|webpack|rollup|parcel|storybook|cypress|jest|turbo|nx|nest|remix|svelte-kit)\b.*\b(dev|build|preview|test|start|serve|watch|run|open)\b",
   "\b(tsx|ts-node|ts-node-dev|nodemon|vite-node)\b.*\b(watch|dev|start|serve|run)\b",
-  "node_modules[/\\](next|nuxt|astro|webpack|rollup|parcel|storybook|cypress|jest|turbo|nx|nest|remix|svelte-kit|tsx|ts-node|ts-node-dev|nodemon|vite-node)[/\\]"
+  "node_modules[/\\](vite|vitest)[/\\]",
+  "node_modules[/\\](next|nuxt|astro|webpack|rollup|parcel|storybook|cypress|jest|turbo|nx|nest|remix|svelte-kit|tsx|ts-node|ts-node-dev|nodemon|vite-node)[/\\].*\b(dev|build|preview|test|start|serve|watch|run|open)\b"
 )
 
 $script:WorkspaceScopedRuntimePatterns = @(
@@ -219,10 +216,87 @@ function Get-ParentProcessName {
   return $null
 }
 
+function Test-ProcessAnchorsTaskOwnership {
+  param(
+    [object]$Process,
+    [hashtable]$ProcessById,
+    [string]$WorkspacePattern
+  )
+
+  if ($null -eq $Process) {
+    return $false
+  }
+
+  $name = ([string]$Process.Name).ToLowerInvariant()
+  $commandLine = [string]$Process.CommandLine
+  $workspaceMatch = Test-WorkspaceMatch -CommandLine $commandLine -WorkspacePattern $WorkspacePattern
+
+  if (-not $workspaceMatch) {
+    return $false
+  }
+
+  if (Test-NamePatternList -Value $name -Patterns $script:ProtectedShellNamePatterns) {
+    $parentName = Get-ParentProcessName -ParentProcessId ([int]$Process.ParentProcessId) -ProcessById $ProcessById
+
+    if ($parentName -match $script:CodexParentNamePattern) {
+      return $false
+    }
+
+    if ($commandLine -match "Long-lived PowerShell AST parser|ConvertFrom-Json") {
+      return $false
+    }
+
+    return Test-PatternList -Value $commandLine -Patterns $script:WorkspaceScopedShellPatterns
+  }
+
+  if (Test-NamePatternList -Value $name -Patterns $script:CmdShellNamePatterns) {
+    return Test-PatternList -Value $commandLine -Patterns $script:WorkspaceScopedShellPatterns
+  }
+
+  if (Test-NamePatternList -Value $name -Patterns $script:NodeNamePatterns) {
+    return Test-PatternList -Value $commandLine -Patterns $script:WorkspaceScopedNodePatterns
+  }
+
+  if (Test-NamePatternList -Value $name -Patterns $script:DirectToolNamePatterns) {
+    return Test-PatternList -Value $commandLine -Patterns $script:WorkspaceScopedDirectToolPatterns
+  }
+
+  if (Test-NamePatternList -Value $name -Patterns $script:GenericRuntimeNamePatterns) {
+    return Test-PatternList -Value $commandLine -Patterns $script:WorkspaceScopedRuntimePatterns
+  }
+
+  return $false
+}
+
+function Test-TaskOwnedAncestor {
+  param(
+    [int]$ParentProcessId,
+    [hashtable]$ProcessById,
+    [string]$WorkspacePattern
+  )
+
+  $visited = @{}
+  $ancestorId = $ParentProcessId
+
+  while ($ancestorId -gt 0 -and $ProcessById.ContainsKey($ancestorId) -and -not $visited.ContainsKey($ancestorId)) {
+    $visited[$ancestorId] = $true
+
+    $ancestor = $ProcessById[$ancestorId]
+    if (Test-ProcessAnchorsTaskOwnership -Process $ancestor -ProcessById $ProcessById -WorkspacePattern $WorkspacePattern) {
+      return $true
+    }
+
+    $ancestorId = [int]$ancestor.ParentProcessId
+  }
+
+  return $false
+}
+
 function Test-TemporaryShellCommandLine {
   param(
     [string]$CommandLine,
-    [bool]$WorkspaceMatch
+    [bool]$WorkspaceMatch,
+    [bool]$TaskOwnedAncestor = $false
   )
 
   if ([string]::IsNullOrWhiteSpace($CommandLine)) {
@@ -237,7 +311,7 @@ function Test-TemporaryShellCommandLine {
     return $true
   }
 
-  return $WorkspaceMatch -and (Test-PatternList -Value $CommandLine -Patterns $script:WorkspaceScopedShellPatterns)
+  return ($WorkspaceMatch -or $TaskOwnedAncestor) -and (Test-PatternList -Value $CommandLine -Patterns $script:WorkspaceScopedShellPatterns)
 }
 
 function Classify-TemporaryProcess {
@@ -252,6 +326,7 @@ function Classify-TemporaryProcess {
   $commandLine = [string]$Process.CommandLine
   $parentName = Get-ParentProcessName -ParentProcessId ([int]$Process.ParentProcessId) -ProcessById $ProcessById
   $workspaceMatch = Test-WorkspaceMatch -CommandLine $commandLine -WorkspacePattern $WorkspacePattern
+  $taskOwnedAncestor = Test-TaskOwnedAncestor -ParentProcessId ([int]$Process.ParentProcessId) -ProcessById $ProcessById -WorkspacePattern $WorkspacePattern
 
   if ([int]$Process.ProcessId -eq $CurrentProcessId) {
     return $null
@@ -267,7 +342,7 @@ function Classify-TemporaryProcess {
     }
 
     if (
-      (Test-TemporaryShellCommandLine -CommandLine $commandLine -WorkspaceMatch $workspaceMatch) -and
+      (Test-TemporaryShellCommandLine -CommandLine $commandLine -WorkspaceMatch $workspaceMatch -TaskOwnedAncestor $taskOwnedAncestor) -and
       $commandLine -notmatch "ConvertFrom-Json"
     ) {
       return New-ProcessRecord -Process $Process -Category "tool-shell" -Killable:$true -Reason "Task-owned shell for temporary tool work"
@@ -277,7 +352,7 @@ function Classify-TemporaryProcess {
   }
 
   if (Test-NamePatternList -Value $name -Patterns $script:CmdShellNamePatterns) {
-    if (Test-TemporaryShellCommandLine -CommandLine $commandLine -WorkspaceMatch $workspaceMatch) {
+    if (Test-TemporaryShellCommandLine -CommandLine $commandLine -WorkspaceMatch $workspaceMatch -TaskOwnedAncestor $taskOwnedAncestor) {
       return New-ProcessRecord -Process $Process -Category "tool-shell" -Killable:$true -Reason "Task-owned shell for temporary tool work"
     }
 
@@ -297,12 +372,8 @@ function Classify-TemporaryProcess {
       return New-ProcessRecord -Process $Process -Category "devtools-mcp" -Killable:$true -Reason "DevTools MCP service"
     }
 
-    if (Test-PatternList -Value $commandLine -Patterns $script:HighConfidenceNodePatterns) {
-      return New-ProcessRecord -Process $Process -Category "dev-tool" -Killable:$true -Reason "Temporary frontend dev or test process"
-    }
-
-    if ($workspaceMatch -and (Test-PatternList -Value $commandLine -Patterns $script:WorkspaceScopedNodePatterns)) {
-      return New-ProcessRecord -Process $Process -Category "dev-tool" -Killable:$true -Reason "Workspace-owned JavaScript dev process"
+    if (($workspaceMatch -or $taskOwnedAncestor) -and (Test-PatternList -Value $commandLine -Patterns $script:WorkspaceScopedNodePatterns)) {
+      return New-ProcessRecord -Process $Process -Category "dev-tool" -Killable:$true -Reason "Current-task JavaScript dev process"
     }
 
     if ($commandLine -match $script:BrowserAutomationPattern) {
@@ -313,16 +384,16 @@ function Classify-TemporaryProcess {
   }
 
   if (Test-NamePatternList -Value $name -Patterns $script:DirectToolNamePatterns) {
-    if ($workspaceMatch -and (Test-PatternList -Value $commandLine -Patterns $script:WorkspaceScopedDirectToolPatterns)) {
-      return New-ProcessRecord -Process $Process -Category "dev-tool" -Killable:$true -Reason "Workspace-owned developer tool process"
+    if (($workspaceMatch -or $taskOwnedAncestor) -and (Test-PatternList -Value $commandLine -Patterns $script:WorkspaceScopedDirectToolPatterns)) {
+      return New-ProcessRecord -Process $Process -Category "dev-tool" -Killable:$true -Reason "Current-task developer tool process"
     }
 
     return $null
   }
 
   if (Test-NamePatternList -Value $name -Patterns $script:GenericRuntimeNamePatterns) {
-    if ($workspaceMatch -and (Test-PatternList -Value $commandLine -Patterns $script:WorkspaceScopedRuntimePatterns)) {
-      return New-ProcessRecord -Process $Process -Category "dev-tool" -Killable:$true -Reason "Workspace-owned dev or test runtime"
+    if (($workspaceMatch -or $taskOwnedAncestor) -and (Test-PatternList -Value $commandLine -Patterns $script:WorkspaceScopedRuntimePatterns)) {
+      return New-ProcessRecord -Process $Process -Category "dev-tool" -Killable:$true -Reason "Current-task dev or test runtime"
     }
 
     return $null

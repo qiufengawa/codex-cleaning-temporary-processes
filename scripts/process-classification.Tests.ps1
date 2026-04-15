@@ -185,6 +185,23 @@ Describe 'Get-TemporaryProcessClassifications' {
     $result[0].Killable | Should Be $true
   }
 
+  It 'does not classify vite node processes without workspace evidence' {
+    . $libraryPath
+
+    $processes = @(
+      [pscustomobject]@{
+        ProcessId = 143
+        ParentProcessId = 1
+        Name = 'node'
+        CommandLine = 'node /repo/node_modules/vite/bin/vite.js'
+      }
+    )
+
+    $result = @(Get-TemporaryProcessClassifications -Processes $processes)
+
+    $result.Count | Should Be 0
+  }
+
   It 'classifies workspace-scoped uvicorn python processes as temporary dev tools' {
     . $libraryPath
 
@@ -295,6 +312,96 @@ Describe 'Get-TemporaryProcessClassifications' {
     $result = @(Get-TemporaryProcessClassifications -Processes $processes)
 
     $result.Count | Should Be 0
+  }
+
+  It 'classifies relative pnpm direct processes through a workspace-owned parent shell' {
+    . $libraryPath
+
+    $processes = @(
+      [pscustomobject]@{
+        ProcessId = 129
+        ParentProcessId = 1
+        Name = 'bash'
+        CommandLine = '/bin/bash -lc "cd /repo && pnpm dev"'
+      }
+      [pscustomobject]@{
+        ProcessId = 130
+        ParentProcessId = 129
+        Name = 'pnpm'
+        CommandLine = 'pnpm dev'
+      }
+    )
+
+    $result = @(Get-TemporaryProcessClassifications -Processes $processes -Workspace '/repo')
+    $child = @($result | Where-Object { $_.ProcessId -eq 130 })
+
+    $result.Count | Should Be 2
+    $child.Count | Should Be 1
+    $child[0].Category | Should Be 'dev-tool'
+    $child[0].Killable | Should Be $true
+  }
+
+  It 'classifies relative python runtimes through a workspace-owned parent shell' {
+    . $libraryPath
+
+    $processes = @(
+      [pscustomobject]@{
+        ProcessId = 131
+        ParentProcessId = 1
+        Name = 'bash'
+        CommandLine = '/bin/bash -lc "cd /repo && python -m pytest tests/api"'
+      }
+      [pscustomobject]@{
+        ProcessId = 132
+        ParentProcessId = 131
+        Name = 'python'
+        CommandLine = 'python -m pytest tests/api'
+      }
+    )
+
+    $result = @(Get-TemporaryProcessClassifications -Processes $processes -Workspace '/repo')
+    $child = @($result | Where-Object { $_.ProcessId -eq 132 })
+
+    $result.Count | Should Be 2
+    $child.Count | Should Be 1
+    $child[0].Category | Should Be 'dev-tool'
+    $child[0].Killable | Should Be $true
+  }
+
+  It 'classifies node launcher descendants through ancestor task ownership' {
+    . $libraryPath
+
+    $processes = @(
+      [pscustomobject]@{
+        ProcessId = 133
+        ParentProcessId = 1
+        Name = 'cmd.exe'
+        CommandLine = 'cmd.exe /c pnpm test --dir C:\Repo'
+      }
+      [pscustomobject]@{
+        ProcessId = 134
+        ParentProcessId = 133
+        Name = 'powershell.exe'
+        CommandLine = 'powershell.exe -NoProfile -Command pnpm test'
+      }
+      [pscustomobject]@{
+        ProcessId = 135
+        ParentProcessId = 134
+        Name = 'node.exe'
+        CommandLine = '"C:\Program Files\nodejs\node.exe" "C:\Users\Admin\AppData\Local\pnpm\pnpm.cjs" test'
+      }
+    )
+
+    $result = @(Get-TemporaryProcessClassifications -Processes $processes -Workspace 'C:\Repo')
+    $descendantShell = @($result | Where-Object { $_.ProcessId -eq 134 })
+    $nodeChild = @($result | Where-Object { $_.ProcessId -eq 135 })
+
+    $result.Count | Should Be 3
+    $descendantShell.Count | Should Be 1
+    $nodeChild.Count | Should Be 1
+    $descendantShell[0].Category | Should Be 'tool-shell'
+    $nodeChild[0].Category | Should Be 'dev-tool'
+    $nodeChild[0].Killable | Should Be $true
   }
 
   It 'classifies workspace-scoped bash tsx watch shells as temporary tool shells' {
@@ -418,6 +525,23 @@ Describe 'Get-TemporaryProcessClassifications' {
         ParentProcessId = 1
         Name = 'next'
         CommandLine = 'next telemetry disable --dir /repo'
+      }
+    )
+
+    $result = @(Get-TemporaryProcessClassifications -Processes $processes -Workspace '/repo')
+
+    $result.Count | Should Be 0
+  }
+
+  It 'does not classify shell-wrapped framework commands without lifecycle markers' {
+    . $libraryPath
+
+    $processes = @(
+      [pscustomobject]@{
+        ProcessId = 144
+        ParentProcessId = 1
+        Name = 'bash'
+        CommandLine = '/bin/bash -lc "cd /repo && next telemetry disable"'
       }
     )
 
@@ -591,5 +715,84 @@ Describe 'Get-TemporaryProcessClassifications' {
     $result.Count | Should Be 1
     $result[0].Category | Should Be 'browser-debug'
     $result[0].Killable | Should Be $true
+  }
+
+  It 'does not classify relative dev commands without a workspace-owned ancestor' {
+    . $libraryPath
+
+    $processes = @(
+      [pscustomobject]@{
+        ProcessId = 136
+        ParentProcessId = 1
+        Name = 'bash'
+        CommandLine = '/bin/bash -lc "pnpm dev"'
+      }
+      [pscustomobject]@{
+        ProcessId = 137
+        ParentProcessId = 136
+        Name = 'pnpm'
+        CommandLine = 'pnpm dev'
+      }
+    )
+
+    $result = @(Get-TemporaryProcessClassifications -Processes $processes -Workspace '/repo')
+
+    $result.Count | Should Be 0
+  }
+
+  It 'does not classify child dev tools from the active Codex shell lineage alone' {
+    . $libraryPath
+
+    $processes = @(
+      [pscustomobject]@{
+        ProcessId = 138
+        ParentProcessId = 1
+        Name = 'Codex'
+        CommandLine = 'Codex.exe'
+      }
+      [pscustomobject]@{
+        ProcessId = 139
+        ParentProcessId = 138
+        Name = 'powershell.exe'
+        CommandLine = 'powershell.exe -NoProfile'
+      }
+      [pscustomobject]@{
+        ProcessId = 140
+        ParentProcessId = 139
+        Name = 'pnpm'
+        CommandLine = 'pnpm dev'
+      }
+    )
+
+    $result = @(Get-TemporaryProcessClassifications -Processes $processes -Workspace 'C:\Repo')
+
+    $result.Count | Should Be 1
+    $result[0].ProcessId | Should Be 139
+    $result[0].Category | Should Be 'protected-shell'
+  }
+
+  It 'does not classify unrelated node children just because an ancestor is task-owned' {
+    . $libraryPath
+
+    $processes = @(
+      [pscustomobject]@{
+        ProcessId = 141
+        ParentProcessId = 1
+        Name = 'bash'
+        CommandLine = '/bin/bash -lc "cd /repo && pnpm dev"'
+      }
+      [pscustomobject]@{
+        ProcessId = 142
+        ParentProcessId = 141
+        Name = 'node'
+        CommandLine = 'node /tmp/custom-script.js'
+      }
+    )
+
+    $result = @(Get-TemporaryProcessClassifications -Processes $processes -Workspace '/repo')
+
+    $result.Count | Should Be 1
+    $result[0].ProcessId | Should Be 141
+    $result[0].Category | Should Be 'tool-shell'
   }
 }

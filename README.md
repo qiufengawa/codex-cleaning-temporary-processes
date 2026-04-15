@@ -44,7 +44,7 @@ For ordinary build, test, serve, and runtime processes, pass `-Workspace` whenev
 
 The skill uses a three-mode workflow:
 
-- `inspect`: classify temporary candidates and protected processes without killing anything
+- `inspect`: report classified temporary candidates and any positively identified protected classes without killing anything
 - `checkpoint-cleanup`: reclaim only high-confidence leftovers after a risky step has finished
 - `cleanup`: do a final sweep for remaining killable temporary process trees
 
@@ -53,14 +53,23 @@ Under the hood, the implementation stays split into two decisions:
 - process classification decides what kind of process Codex is looking at
 - cleanup policy decides whether the current mode should preserve, inspect only, or clean it now
 
+## Ownership Signals
+
+The classification rules stay intentionally conservative when attributing a process to the current task.
+
+- Prefer passing `-Workspace` so command lines can be matched to the active repo or project path
+- Relative child commands can inherit task ownership only when a parent or ancestor already has both workspace evidence and known dev, test, build, serve, or watch markers
+- Codex-owned shell ancestry by itself is never enough to make descendants killable
+- If the evidence is weak or ambiguous, the process remains `inspect-only` or is ignored entirely
+
 ## Recommended Strategy
 
 Use the skill in short cycles instead of waiting for the very end of a long task:
 
-1. Run `inspect` before cleanup or when process ownership is still unclear
-2. Run `checkpoint-cleanup` after a risky step such as tests, builds, one-shot scripts, browser automation, or DevTools MCP
-3. Re-run `inspect` to verify only the intended leftovers were reclaimed
-4. Use `cleanup` only when the remaining temporary process trees are definitely no longer needed
+1. Run `inspect` before cleanup or when process ownership is still unclear.
+2. Run `checkpoint-cleanup` after a risky step such as tests, builds, one-shot scripts, browser automation, or DevTools MCP.
+3. Re-run `inspect` to verify only the intended leftovers were reclaimed.
+4. Use `cleanup` only when the remaining temporary process trees are definitely no longer needed.
 
 ## Safety Model
 
@@ -84,7 +93,33 @@ Checkpoint cleanup is mainly for:
 - It will not kill the active Codex shell or Codex helper shells
 - It will not kill normal user browsers without automation flags
 - It will not kill unmatched runtimes just because they are `node`, `python`, `java`, or similar
+- It will not treat Codex-owned shell ancestry alone as proof that a descendant belongs to the current task
 - It will not force cleanup when evidence is weak; those processes stay in `inspect-only`
+- Direct browser-process matching currently targets Chromium and Edge-family remote-debug sessions; non-Chromium automation is mainly identified through helper or wrapper processes
+
+## Output Contract
+
+`inspect` returns the current classified snapshot:
+
+- `matchedCount`
+- `killableRoots`
+- `decisionCounts`
+- `processes`
+
+`checkpoint-cleanup` and `cleanup` return a post-cleanup snapshot plus kill results:
+
+- `matchedCount`
+- `killableRoots`
+- `decisionCounts`
+- `killedCount`
+- `killedIds`
+- `failedCount`
+- `failedIds`
+- `processes`
+
+The `processes` array in cleanup modes is re-inspected after kill attempts, so callers see what still remains instead of only the pre-cleanup view.
+
+`inspect` reports classified records, not a full process table dump. Ambiguous or unmatched processes may be preserved silently and omitted from the output.
 
 ## Repository Layout
 
@@ -95,7 +130,7 @@ Checkpoint cleanup is mainly for:
 - `scripts/cleanup-policy.ps1`: cleanup decision policy
 - `scripts/cleanup-temporary-processes.ps1`: shared inspect and cleanup entry point
 - `scripts/cleanup-temporary-processes.sh`: macOS and Linux shell wrapper
-- `scripts/*.Tests.ps1`: Pester coverage for inventory, classification, and policy behavior
+- `scripts/*.Tests.ps1`: Pester coverage for inventory, classification, policy, and entrypoint behavior
 - `docs/project-introduction.md`: English project introduction
 - `docs/project-introduction.zh-CN.md`: Chinese project introduction
 
@@ -129,12 +164,19 @@ Switch `inspect` to `checkpoint-cleanup` after a risky step finishes. Use `clean
 
 ## Testing
 
-Run the shipped Pester suites:
+Run the focused suites:
 
 ```powershell
 Invoke-Pester -Path .\scripts\process-inventory.Tests.ps1 -PassThru
 Invoke-Pester -Path .\scripts\process-classification.Tests.ps1 -PassThru
 Invoke-Pester -Path .\scripts\cleanup-policy.Tests.ps1 -PassThru
+Invoke-Pester -Path .\scripts\cleanup-temporary-processes.Tests.ps1 -PassThru
+```
+
+Or run the full matrix in one shot:
+
+```powershell
+Invoke-Pester -Path .\scripts -PassThru
 ```
 
 ## License
