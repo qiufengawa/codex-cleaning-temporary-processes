@@ -2,7 +2,7 @@
 
 [English](./README.md)
 
-Codex Cleaning Temporary Processes 是一个公开的跨平台 skill，用来在不越过工作区边界的前提下，安全清理临时开发进程。
+Codex Cleaning Temporary Processes 是一个公开、跨平台的 skill，用来在不越过工作区边界的前提下，安全清理临时开发进程。
 
 ## 纯 Skill 形态
 
@@ -12,20 +12,22 @@ Codex Cleaning Temporary Processes 是一个公开的跨平台 skill，用来在
 - 保持 `SKILL.md`、`agents/openai.yaml` 和 `scripts/` 在一起
 - 依赖最佳努力的隐式调用，而不是插件 hook 或宿主回调
 
-这意味着 skill 可以主动引导 Codex 在合适的时机考虑清理，但它不能单靠自己提供宿主级的强自动触发。如果你的环境里没有发生隐式调用，就显式要求 Codex 使用 `$codex-cleaning-temporary-processes`。
+这意味着 skill 可以主动引导 Codex 在合适时机重新考虑清理，但它本身不能提供宿主级固定 hook、定时器或强制自动触发。如果你的环境里没有发生隐式调用，就显式要求 Codex 使用 `$codex-cleaning-temporary-processes`。
 
 ## 覆盖范围
 
-这个 skill 面向公开场景，不局限于单一前端项目。它应该能理解主流工具链留下的临时进程残留，例如：
+这个 skill 面向公开场景，不局限于单一项目或单一语言。它应该能理解主流工具链留下的临时进程残留，例如：
 
 - JavaScript / TypeScript：`npm`、`pnpm`、`yarn`、`bun`、`vite`、`vitest`、`jest`、`webpack`、`rollup`、`next`、`nuxt`、`turbo`
 - Rust 与原生工具链：`cargo`、`rustc`、`tauri`、`trunk`
 - Python：`python`、`uv`、`pip`、`pipenv`、`poetry`、`hatch`、`pytest`、`uvicorn`、`jupyter`、`streamlit`
 - JVM 与 .NET：`java`、`mvn`、`gradle`、`kotlin`、`scala`、`dotnet`
 - 其他常见栈：`go`、`ruby`、`bundle`、`rails`、`php`、`composer`、`artisan`、`elixir`、`mix`、`iex`、`rebar3`、`deno`
+- 新增主流生态：`clj`、`lein`、`ghci`、`runghc`、`cabal`、`stack`、`ocaml`、`dune`、`Rscript`、`perl`、`prove`、`cpanm`、`lua`、`luarocks`、`zig`
+- 构建、Apple 与报告工具：`julia`、`tox`、`nox`、`quarto`、`crystal`、`xcodebuild`、`bazel`、`buck2`
 - 浏览器自动化与远程调试：`chrome-devtools-mcp`、Playwright 风格工具、无头浏览器、远程调试启动链路
 
-覆盖范围广，不代表清理策略激进。最终是否清理仍然由安全规则决定。
+覆盖范围很广，但清理策略仍然保守。这里强调的是“覆盖更多主流生态”，不是“穷尽所有编程语言或所有命令”。
 
 ## 触发节奏
 
@@ -34,7 +36,7 @@ Codex Cleaning Temporary Processes 是一个公开的跨平台 skill，用来在
 使用下面这三档公开触发规则：
 
 - `must reconsider now`
-  适用于一次性高风险检查点成功之后、`failed one-shot high-risk` 场景之后、显式自动化检查点结束之后、子代理完成之后、同一工作区一批一次性高风险命令结束之后，或者用户明确要求最终清扫时。
+  适用于一次性高风险检查点成功之后、`failed one-shot high-risk` 这类失败检查点之后、DevTools 或浏览器自动化或远程调试检查点结束之后、子代理完成之后、同一工作区一批一次性高风险命令结束之后，或者用户明确要求最终清扫时。
 - `should reconsider soon`
   适用于存在残留风险、需要缓解堆积，但部分进程仍然可能复用的场景。
 - `do not reconsider from this checkpoint alone`
@@ -44,7 +46,7 @@ Codex Cleaning Temporary Processes 是一个公开的跨平台 skill，用来在
 
 更强触发表示更强的重新评估义务，不表示更强的 kill 权限。即使某个检查点属于 `must reconsider now`，最终也仍然可能落到 `inspect` 或直接保留。
 
-模式建议：
+建议模式：
 
 - 可能复用时，先用 `inspect`
 - 已结束检查点留下高置信度残留时，用 `checkpoint-cleanup`
@@ -59,7 +61,9 @@ Codex Cleaning Temporary Processes 是一个公开的跨平台 skill，用来在
 - 如果你的环境里隐式调用不够稳定，显式要求使用 `$codex-cleaning-temporary-processes` 仍然是诚实且安全的兜底方案
 - 一次性高风险检查点即使失败也要重新评估，因为失败同样可能留下残留
 - 这不是更强的 kill 权限
-- 覆盖更多工具链不代表放宽安全线；最终能不能清理，仍然要看归属证据和工作区证据
+- 覆盖更多主流生态不代表放宽安全线
+- 这不是“所有编程语言都已覆盖”的承诺
+- 新增构建、Apple 和脚本工具覆盖后，仍然遵守同一套保守归属判断
 
 ## 安全模型
 

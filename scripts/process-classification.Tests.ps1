@@ -1307,6 +1307,144 @@ Describe 'Get-TemporaryProcessClassifications' {
       ProcessId = 136
       ProcessName = 'mix'
       CommandLine = 'mix phx.server --cd /repo'
+    },
+    @{
+      Name = 'clj'
+      ProcessId = 137
+      ProcessName = 'clj'
+      CommandLine = 'clj -M:dev -m app.core --project-dir /repo'
+    },
+    @{
+      Name = 'lein'
+      ProcessId = 138
+      ProcessName = 'lein'
+      CommandLine = 'lein test :only app.core-test --project-dir /repo'
+    },
+    @{
+      Name = 'cabal'
+      ProcessId = 139
+      ProcessName = 'cabal'
+      CommandLine = 'cabal test all --project-dir=/repo'
+    },
+    @{
+      Name = 'stack'
+      ProcessId = 140
+      ProcessName = 'stack'
+      CommandLine = 'stack test --work-dir /repo/.stack-work'
+    },
+    @{
+      Name = 'ghci'
+      ProcessId = 141
+      ProcessName = 'ghci'
+      CommandLine = 'ghci /repo/app/Main.hs'
+    },
+    @{
+      Name = 'runghc'
+      ProcessId = 142
+      ProcessName = 'runghc'
+      CommandLine = 'runghc /repo/app/Main.hs --watch'
+    },
+    @{
+      Name = 'dune'
+      ProcessId = 143
+      ProcessName = 'dune'
+      CommandLine = 'dune runtest --root /repo'
+    },
+    @{
+      Name = 'ocaml'
+      ProcessId = 144
+      ProcessName = 'ocaml'
+      CommandLine = 'ocaml /repo/scripts/dev.ml'
+    },
+    @{
+      Name = 'Rscript'
+      ProcessId = 145
+      ProcessName = 'Rscript'
+      CommandLine = 'Rscript /repo/scripts/dev.R'
+    },
+    @{
+      Name = 'perl'
+      ProcessId = 146
+      ProcessName = 'perl'
+      CommandLine = 'perl /repo/script/dev.pl --watch'
+    },
+    @{
+      Name = 'prove'
+      ProcessId = 147
+      ProcessName = 'prove'
+      CommandLine = 'prove /repo/t/app.t'
+    },
+    @{
+      Name = 'cpanm'
+      ProcessId = 148
+      ProcessName = 'cpanm'
+      CommandLine = 'cpanm --test-only --local-lib-contained /repo/.perl-local App::Example'
+    },
+    @{
+      Name = 'lua'
+      ProcessId = 149
+      ProcessName = 'lua'
+      CommandLine = 'lua /repo/scripts/dev.lua'
+    },
+    @{
+      Name = 'luarocks'
+      ProcessId = 150
+      ProcessName = 'luarocks'
+      CommandLine = 'luarocks test --tree=/repo/.luarocks'
+    },
+    @{
+      Name = 'zig'
+      ProcessId = 151
+      ProcessName = 'zig'
+      CommandLine = 'zig build test --cache-dir /repo/.zig-cache'
+    },
+    @{
+      Name = 'julia'
+      ProcessId = 152
+      ProcessName = 'julia'
+      CommandLine = 'julia /repo/scripts/dev.jl'
+    },
+    @{
+      Name = 'tox'
+      ProcessId = 153
+      ProcessName = 'tox'
+      CommandLine = 'tox --workdir /repo/.tox -e py'
+    },
+    @{
+      Name = 'nox'
+      ProcessId = 154
+      ProcessName = 'nox'
+      CommandLine = 'nox --noxfile /repo/noxfile.py -s tests'
+    },
+    @{
+      Name = 'quarto'
+      ProcessId = 155
+      ProcessName = 'quarto'
+      CommandLine = 'quarto render /repo/docs/index.qmd'
+    },
+    @{
+      Name = 'crystal'
+      ProcessId = 156
+      ProcessName = 'crystal'
+      CommandLine = 'crystal spec /repo/spec/app_spec.cr'
+    },
+    @{
+      Name = 'xcodebuild'
+      ProcessId = 157
+      ProcessName = 'xcodebuild'
+      CommandLine = 'xcodebuild -project /repo/App.xcodeproj -scheme App test'
+    },
+    @{
+      Name = 'bazel'
+      ProcessId = 158
+      ProcessName = 'bazel'
+      CommandLine = 'bazel --output_base=/repo/.bazel test //app:all'
+    },
+    @{
+      Name = 'buck2'
+      ProcessId = 159
+      ProcessName = 'buck2'
+      CommandLine = 'buck2 --isolation-dir=/repo/.buck2 test //app:all'
     }
   ) {
     param($Name, $ProcessId, $ProcessName, $CommandLine)
@@ -1327,6 +1465,56 @@ Describe 'Get-TemporaryProcessClassifications' {
     $result.Count | Should Be 1
     $result[0].Category | Should Be 'dev-tool'
     $result[0].Killable | Should Be $true
+  }
+
+  It 'does not classify broader mainstream toolchains without workspace evidence' -TestCases @(
+    @{
+      Name = 'clj'
+      ProcessId = 186
+      ProcessName = 'clj'
+      CommandLine = 'clj -M:dev -m app.core'
+    },
+    @{
+      Name = 'cabal'
+      ProcessId = 187
+      ProcessName = 'cabal'
+      CommandLine = 'cabal test all'
+    },
+    @{
+      Name = 'Rscript'
+      ProcessId = 188
+      ProcessName = 'Rscript'
+      CommandLine = 'Rscript scripts/dev.R'
+    },
+    @{
+      Name = 'tox'
+      ProcessId = 189
+      ProcessName = 'tox'
+      CommandLine = 'tox -e py'
+    },
+    @{
+      Name = 'bazel'
+      ProcessId = 190
+      ProcessName = 'bazel'
+      CommandLine = 'bazel test //app:all'
+    }
+  ) {
+    param($Name, $ProcessId, $ProcessName, $CommandLine)
+
+    . $libraryPath
+
+    $processes = @(
+      [pscustomobject]@{
+        ProcessId = $ProcessId
+        ParentProcessId = 1
+        Name = $ProcessName
+        CommandLine = $CommandLine
+      }
+    )
+
+    $result = @(Get-TemporaryProcessClassifications -Processes $processes)
+
+    $result.Count | Should Be 0
   }
 
   It 'does not classify a browser just because a devtools page is open' {

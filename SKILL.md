@@ -39,9 +39,12 @@ Common examples include:
 - Python: `python`, `uv`, `pip`, `pipenv`, `poetry`, `hatch`, `pytest`, `uvicorn`, `jupyter`, `streamlit`
 - JVM and .NET: `java`, `mvn`, `gradle`, `kotlin`, `scala`, `dotnet`
 - Other popular stacks: `go`, `ruby`, `bundle`, `rails`, `php`, `composer`, `artisan`, `elixir`, `mix`, `iex`, `rebar3`, `deno`
+- Additional mainstream ecosystems: `clj`, `lein`, `ghci`, `runghc`, `cabal`, `stack`, `ocaml`, `dune`, `Rscript`, `perl`, `prove`, `cpanm`, `lua`, `luarocks`, `zig`
+- Build, Apple, and report tooling: `julia`, `tox`, `nox`, `quarto`, `crystal`, `xcodebuild`, `bazel`, `buck2`
 - Browser automation and debugging: `chrome-devtools-mcp`, Playwright-style tooling, headless browsers, remote-debug launchers
 
 Coverage does not mean aggression. The safety rules still decide whether something is inspect-only, cleanup-now, or preserve.
+Coverage is broad across mainstream ecosystems, not exhaustive across every language, toolchain, or command.
 
 ## Cleanup Modes
 

@@ -23,9 +23,12 @@ The skill is intentionally broader than a single frontend stack. It should reaso
 - Python: `python`, `uv`, `pip`, `pipenv`, `poetry`, `hatch`, `pytest`, `uvicorn`, `jupyter`, `streamlit`
 - JVM and .NET: `java`, `mvn`, `gradle`, `kotlin`, `scala`, `dotnet`
 - Other popular stacks: `go`, `ruby`, `bundle`, `rails`, `php`, `composer`, `artisan`, `elixir`, `mix`, `iex`, `rebar3`, `deno`
+- Additional mainstream ecosystems: `clj`, `lein`, `ghci`, `runghc`, `cabal`, `stack`, `ocaml`, `dune`, `Rscript`, `perl`, `prove`, `cpanm`, `lua`, `luarocks`, `zig`
+- Build, Apple, and report tooling: `julia`, `tox`, `nox`, `quarto`, `crystal`, `xcodebuild`, `bazel`, `buck2`
 - Browser automation and remote debugging: `chrome-devtools-mcp`, Playwright-style tooling, headless browsers, remote-debug launchers
 
 Coverage is language-agnostic, but cleanup is still conservative.
+Coverage is broad across mainstream ecosystems, not exhaustive across every language or command.
 
 ## Trigger Cadence
 
@@ -60,6 +63,8 @@ This package is still a pure skill, not a background plugin.
 - A failed one-shot high-risk checkpoint still counts, because residue can remain after errors too
 - This is not stronger kill authority
 - Broad toolchain coverage does not loosen the safety bar: ownership and workspace evidence still decide whether something is inspect-only or reclaimable
+- Broader mainstream coverage still does not mean "all programming languages"
+- Additional build, Apple, and scripting coverage still follows the same conservative ownership checks
 
 ## Safety Model
 
