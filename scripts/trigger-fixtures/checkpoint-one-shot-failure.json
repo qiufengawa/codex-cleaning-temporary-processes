@@ -1,0 +1,7 @@
+{
+  "checkpoint_type": "one-shot-high-risk",
+  "result": "failure",
+  "workspace": "/repo",
+  "tool_family": "shell-command",
+  "command": "bash -lc \"cargo test --manifest-path /repo/Cargo.toml\""
+}

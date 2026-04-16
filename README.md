@@ -31,15 +31,18 @@ Coverage is language-agnostic, but cleanup is still conservative.
 
 Treat cleanup as checkpoint-scoped rather than task-scoped.
 
-The skill should be reconsidered after a finished checkpoint such as:
+Use the public trigger classes below:
 
-- a finished build, test, install, preview, serve, watch, or one-shot runtime step
-- a finished DevTools, browser automation, or remote-debug step
-- a finished subagent result when its helpers no longer have reuse value
-- a finished batch of one-shot commands where backlog relief matters
-- a clearly safe final sweep request
+- `must reconsider now`
+  Use this after a finished one-shot high-risk checkpoint succeeds or fails, after a finished DevTools, browser automation, or remote-debug checkpoint, after a finished subagent result, after a finished same-workspace batch of one-shot high-risk commands, or after a clearly safe final sweep request.
+- `should reconsider soon`
+  Use this when residue risk exists and backlog relief matters, but reuse is still plausible for part of the temporary tree.
+- `do not reconsider from this checkpoint alone`
+  Use this for low-risk inspection commands, long-lived `dev` or `watch` or `serve` sessions, session-end alone, or ambiguous workspace-free checkpoints.
 
 Because this is a skill package, that cadence is best-effort implicit invocation, not guaranteed host automation.
+
+Stronger trigger wording means stronger reconsideration, not stronger kill authority. Even a checkpoint marked `must reconsider now` may still resolve to `inspect` or preserve.
 
 Use:
 
@@ -54,6 +57,8 @@ This package is still a pure skill, not a background plugin.
 - It can improve Codex's odds of reconsidering cleanup at the right checkpoints
 - It cannot inject fixed host hooks, timers, or always-on callbacks into the Codex app
 - If your environment does not perform implicit invocation reliably enough, explicit use of `$codex-cleaning-temporary-processes` is still the honest fallback
+- A failed one-shot high-risk checkpoint still counts, because residue can remain after errors too
+- This is not stronger kill authority
 - Broad toolchain coverage does not loosen the safety bar: ownership and workspace evidence still decide whether something is inspect-only or reclaimable
 
 ## Safety Model

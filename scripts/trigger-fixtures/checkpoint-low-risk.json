@@ -1,0 +1,7 @@
+{
+  "checkpoint_type": "low-risk-inspection",
+  "result": "success",
+  "workspace": "/repo",
+  "tool_family": "shell-command",
+  "command": "bash -lc \"Get-ChildItem /repo\""
+}

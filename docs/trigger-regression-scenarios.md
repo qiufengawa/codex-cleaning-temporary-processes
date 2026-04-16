@@ -4,44 +4,47 @@ These scenarios define the public trigger contract for the pure skill package.
 
 Because this repository ships as a skill rather than a plugin, the checkpoints below describe best-effort implicit invocation targets, not guaranteed host callbacks.
 
-## Scenario 1: Finished one-shot tool checkpoint
+## Positive Contract
 
-- What happened: a finished step ran a one-shot command such as `npm test`, `vite build`, `vitest`, `cargo test`, `tauri build`, `pytest`, or `dotnet build`.
-- Should the skill consider itself: yes, best-effort.
-- When to trigger: as soon as the finished checkpoint is clear, even if the larger task continues.
-- Expected mode: prefer `checkpoint-cleanup`; use `inspect` first if reuse is still plausible.
+### `must reconsider now`
 
-## Scenario 2: Finished DevTools or browser automation checkpoint
+Use this class for:
 
-- What happened: the session used `mcp__chrome_devtools__*`, `chrome-devtools-mcp`, Playwright-style tooling, or a browser launched with remote-debug or headless markers.
-- Should the skill consider itself: yes, best-effort.
-- When to trigger: after the explicit automation checkpoint finishes, not only when the whole task ends.
-- Expected mode: prefer `checkpoint-cleanup` for obvious launcher, watchdog, helper-shell, and remote-debug leftovers; use `inspect` first if reuse is still plausible. The first follow-up pass may record current-thread ownership only when this same thread explicitly confirms real explicit-automation use with `-ConfirmCurrentThreadExplicitAutomation` and a non-blank workspace.
+- a finished one-shot high-risk command such as `npm test`, `vite build`, `vitest`, `cargo test`, `tauri build`, `pytest`, or `dotnet build`
+- a failed one-shot high-risk command in the same categories
+- a finished DevTools, browser automation, or remote-debug checkpoint
+- a finished subagent checkpoint
+- a finished same-workspace batch of one-shot high-risk commands
+- a user-requested final sweep
 
-## Scenario 3: Helper backlog relief checkpoint
+Expected decision: prefer `checkpoint-cleanup` when the leftovers are clearly temporary and finished; otherwise fall back to `inspect`.
 
-- What happened: repeated shell or tool commands finished and may have left temporary helpers, wrappers, or runtimes behind.
-- Should the skill consider itself: yes, best-effort.
-- When to trigger: after the finished batch, before process stacks grow further.
-- Expected mode: prefer `inspect` when ownership is still ambiguous; use `checkpoint-cleanup` when finished-step evidence is strong.
+### `should reconsider soon`
 
-## Scenario 4: Finished subagent checkpoint
+Use this class for:
 
-- What happened: a subagent finished work and may have launched shells, runtimes, tests, builds, browser helpers, or dev servers.
-- Should the skill consider itself: yes, best-effort.
-- When to trigger: when the subagent result arrives and the spawned tooling is clearly step-finished.
-- Expected mode: prefer `inspect` when reuse is plausible; use `checkpoint-cleanup` when the leftovers are clearly temporary and finished.
+- backlog relief checkpoints where repeated finished commands may have left temporary helpers behind
+- finished checkpoints where some residue risk exists but reuse is still plausible
 
-## Scenario 5: Final sweep checkpoint
+Expected decision: prefer `inspect` when reuse is plausible or ownership is still ambiguous.
 
-- What happened: the current branch of work is pausing, or the user explicitly asks for a final sweep, and the remaining temporary process trees are no longer needed.
-- Should the skill consider itself: yes, best-effort.
-- When to trigger: at the point where a final sweep is clearly safe.
-- Expected mode: use full `cleanup` after checkpoint-safe passes have already handled earlier leftovers.
+## Negative Contract
+
+### `do not reconsider from this checkpoint alone`
+
+Use this class for:
+
+- low-risk inspection commands such as listing, searching, grepping, or reading files
+- long-lived `dev`, `watch`, `serve`, preview, or storybook-style checkpoints where reuse value is still the point
+- `session-end alone`
+- ambiguous checkpoints with no reliable workspace or task ownership
+
+Expected decision: no stronger cleanup reconsideration from this checkpoint alone.
 
 ## Safety Reminder
 
 - Best-effort implicit invocation should stay conservative.
+- Stronger trigger wording means stronger reconsideration, not stronger kill authority.
 - Current-thread ownership only narrows explicit automation cleanup; it does not widen cleanup for generic runtimes.
 - Do not clean plain interactive shells, ordinary user browsers, reusable dev servers, or ambiguous runtimes without strong task-specific evidence.
 - Workspace match alone is not enough for explicit automation.

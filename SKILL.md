@@ -15,13 +15,16 @@ This repository is a pure skill package. With `allow_implicit_invocation: true`,
 
 Re-evaluate cleanup at finished checkpoints instead of waiting for the whole task to end.
 
-Best-effort implicit invocation is most appropriate:
+Use the public checkpoint classes below:
 
-- after a finished high-risk tool step
-- after a finished batch of one-shot shell commands
-- after browser automation, DevTools, or remote-debug work finishes
-- after a subagent finishes and its helpers no longer have reuse value
-- when the current branch of work is pausing and a final sweep is clearly safe
+- `must reconsider now`
+  Use this after a finished one-shot high-risk checkpoint succeeds or fails, after browser automation, DevTools, or remote-debug work finishes, after a subagent completes, after a same-workspace batch of one-shot high-risk commands finishes, or when the user explicitly asks for a final sweep.
+- `should reconsider soon`
+  Use this when residue risk exists and backlog relief matters, but reuse value may still be plausible for some helpers.
+- `do not reconsider from this checkpoint alone`
+  Use this for low-risk inspection commands, long-lived `dev` or `watch` or `serve` checkpoints, session-end alone, or ambiguous workspace-free situations.
+
+Stronger triggering means stronger reconsideration, not stronger kill authority. A checkpoint that says `must reconsider now` may still resolve to `inspect` or preserve.
 
 If implicit invocation does not happen in your environment, explicitly ask Codex to use `$codex-cleaning-temporary-processes`.
 
@@ -55,6 +58,7 @@ This package is still a pure skill, not a host-level plugin.
 - It can increase the chance that Codex reconsiders cleanup at the right checkpoints
 - It cannot install fixed callbacks, timers, or always-on hooks inside the Codex app
 - If implicit invocation does not happen in your environment, explicitly ask Codex to use `$codex-cleaning-temporary-processes`
+- Failed one-shot high-risk checkpoints still count as trigger-worthy because they may leave residue behind
 - Broader toolchain coverage never lowers the safety threshold for cleanup
 
 ## Safety Model

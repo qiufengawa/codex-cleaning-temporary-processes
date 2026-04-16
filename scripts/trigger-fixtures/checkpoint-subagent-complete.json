@@ -1,0 +1,6 @@
+{
+  "checkpoint_type": "subagent-complete",
+  "result": "completed",
+  "workspace": "/repo",
+  "subagent_id": "worker-7"
+}

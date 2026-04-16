@@ -1,4 +1,0 @@
-{
-  "hook_event_name": "SessionEnd",
-  "reason": "user-finished"
-}

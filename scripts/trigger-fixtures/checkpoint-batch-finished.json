@@ -1,0 +1,10 @@
+{
+  "checkpoint_type": "same-workspace-high-risk-batch",
+  "result": "finished",
+  "workspace": "/repo",
+  "commands": [
+    "bash -lc \"pnpm test --dir /repo\"",
+    "bash -lc \"vite build /repo\"",
+    "bash -lc \"pytest /repo/tests\""
+  ]
+}

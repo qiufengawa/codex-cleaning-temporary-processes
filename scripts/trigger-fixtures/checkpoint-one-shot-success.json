@@ -1,0 +1,7 @@
+{
+  "checkpoint_type": "one-shot-high-risk",
+  "result": "success",
+  "workspace": "/repo",
+  "tool_family": "shell-command",
+  "command": "bash -lc \"pnpm test --dir /repo\""
+}

@@ -1,0 +1,10 @@
+{
+  "checkpoint_type": "explicit-automation",
+  "result": "finished",
+  "workspace": "/repo",
+  "tool_family": "chrome-devtools",
+  "tool_name": "mcp__chrome_devtools__navigate_page",
+  "automation_context": {
+    "codex_app_server_lineage": true
+  }
+}

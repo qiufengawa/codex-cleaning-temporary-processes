@@ -31,15 +31,18 @@ Codex Cleaning Temporary Processes 是一个公开的跨平台 skill，用来在
 
 把清理理解成按检查点触发，而不是等整个任务结束。
 
-这个 skill 适合在下面这些“已结束检查点”之后重新评估：
+使用下面这三档公开触发规则：
 
-- 某个 build、test、install、preview、serve、watch 或一次性 runtime 步骤已经结束
-- 某个 DevTools、浏览器自动化或远程调试步骤已经结束
-- 某个子代理已经结束，且它拉起的 helper 已经没有复用价值
-- 一批一次性命令已经结束，进程积压需要缓解
-- 当前工作分支已经暂停，适合做一次明确安全的最终清扫
+- `must reconsider now`
+  适用于一次性高风险检查点成功之后、`failed one-shot high-risk` 场景之后、显式自动化检查点结束之后、子代理完成之后、同一工作区一批一次性高风险命令结束之后，或者用户明确要求最终清扫时。
+- `should reconsider soon`
+  适用于存在残留风险、需要缓解堆积，但部分进程仍然可能复用的场景。
+- `do not reconsider from this checkpoint alone`
+  适用于低风险检查命令、长驻 `dev` / `watch` / `serve` 会话、`session-end alone`，以及缺少工作区归属的模糊检查点。
 
 因为这是纯 skill 包，所以这里描述的是最佳努力的隐式调用，不是宿主保证的自动回调。
+
+更强触发表示更强的重新评估义务，不表示更强的 kill 权限。即使某个检查点属于 `must reconsider now`，最终也仍然可能落到 `inspect` 或直接保留。
 
 模式建议：
 
@@ -54,6 +57,8 @@ Codex Cleaning Temporary Processes 是一个公开的跨平台 skill，用来在
 - 它能提升 Codex 在合适检查点重新考虑清理的概率
 - 它不能自己向 Codex 宿主注入固定 hook、定时器或常驻回调
 - 如果你的环境里隐式调用不够稳定，显式要求使用 `$codex-cleaning-temporary-processes` 仍然是诚实且安全的兜底方案
+- 一次性高风险检查点即使失败也要重新评估，因为失败同样可能留下残留
+- 这不是更强的 kill 权限
 - 覆盖更多工具链不代表放宽安全线；最终能不能清理，仍然要看归属证据和工作区证据
 
 ## 安全模型

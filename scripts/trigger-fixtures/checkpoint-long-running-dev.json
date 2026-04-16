@@ -1,0 +1,7 @@
+{
+  "checkpoint_type": "long-running-dev",
+  "result": "started",
+  "workspace": "/repo",
+  "tool_family": "shell-command",
+  "command": "bash -lc \"pnpm dev --dir /repo\""
+}
