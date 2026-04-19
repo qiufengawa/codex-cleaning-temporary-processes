@@ -48,3 +48,10 @@
 - 当前线程拥有权只会收窄显式自动化的回收范围，不会放宽普通 runtime 的清理范围。
 - 没有强任务证据时，不要清理普通交互 shell、普通用户浏览器、可复用开发服务或有歧义的 runtime。
 - 仅有工作区匹配仍然不足以清理显式自动化。
+
+## 动作协议
+
+- 遇到触发型已完成检查点时，先 `inspect`
+- 如果 `inspect` 输出里出现 `killable roots`，下一步再执行 `checkpoint-cleanup`
+- 只有在刚结束的检查点确实使用了同线程显式自动化、并且工作区非空时，第一次跟进 `inspect` 才加 `-ConfirmCurrentThreadExplicitAutomation`
+- 需要验证是否已经成功记账时，读取返回结果里的 ledger path 相关字段

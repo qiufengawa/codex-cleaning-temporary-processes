@@ -207,6 +207,16 @@ function Get-CurrentCodexThreadId {
   return 'thread-test'
 }
 
+function Get-ThreadOwnershipStateRoot {
+  return (Split-Path -Parent `$script:ThreadOwnershipStatePath)
+}
+
+function Get-ThreadOwnershipLedgerPath {
+  param([string]`$ThreadId)
+
+  return `$script:ThreadOwnershipStatePath
+}
+
 function Normalize-ThreadOwnershipWorkspace {
   param([string]`$Workspace)
 
@@ -640,6 +650,38 @@ Describe 'cleanup-temporary-processes entrypoint' {
     $firstOutput.killableRoots | Should Be 0
     $secondOutput.killableRoots | Should Be 1
     @($classificationTrace) | Should Be @('<none>', '401')
+  }
+
+  It 'reports thread ownership metadata in inspect output after a confirmed seed pass' {
+    $harnessRoot = Join-Path $TestDrive 'cleanup-entrypoint-thread-ownership-metadata'
+    $preCleanupProcesses = @(
+      [pscustomobject]@{
+        ProcessId = 401
+        ParentProcessId = 1
+        Name = 'node'
+        CommandLine = 'node temp-devtools.js'
+        Category = 'devtools-mcp'
+        ThreadOwnershipSeedable = $true
+        Killable = $false
+        DesiredDecision = 'inspect-only'
+        DecisionReason = 'explicit automation lacks current-task ownership evidence'
+      }
+    )
+
+    $scriptUnderTest = New-CleanupEntrypointHarness `
+      -HarnessRoot $harnessRoot `
+      -PreCleanupProcesses $preCleanupProcesses `
+      -PostCleanupProcesses $preCleanupProcesses `
+      -FailStopIds @() `
+      -ThreadOwnershipEntries @() `
+      -PersistUpdatedThreadOwnership $true
+
+    $output = & $scriptUnderTest -Mode inspect -Workspace 'C:\Repo' -ConfirmCurrentThreadExplicitAutomation -AsJson | ConvertFrom-Json
+
+    $output.threadId | Should Be 'thread-test'
+    $output.threadOwnershipStateRoot | Should Be $harnessRoot
+    $output.threadOwnershipLedgerPath | Should Be (Join-Path $harnessRoot 'thread-ownership-state.json')
+    $output.threadOwnershipEntryCount | Should Be 1
   }
 
   It 'persists first-pass thread ownership before checkpoint cleanup changes the explicit automation snapshot' {

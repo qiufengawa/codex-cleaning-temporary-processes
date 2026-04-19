@@ -53,6 +53,17 @@ Use:
 - `checkpoint-cleanup` when a finished checkpoint left high-confidence leftovers
 - `cleanup` for the final sweep when the remaining temporary tree is clearly done
 
+## Action Protocol
+
+Within the honest limits of a pure skill package, the strongest practical protocol is:
+
+- inspect first after a trigger-worthy finished checkpoint
+- if `inspect` reports `killable roots`, run `checkpoint-cleanup` next instead of waiting for task end
+- if the just-finished checkpoint really used same-thread DevTools MCP, browser automation, or remote debugging, add `-ConfirmCurrentThreadExplicitAutomation` on the first follow-up `inspect`
+- read the returned ledger path and state root fields to verify where the current thread ownership state was written
+
+The returned ledger path is exposed as `threadOwnershipLedgerPath`, and the state root is exposed as `threadOwnershipStateRoot`.
+
 ## Practical Limits
 
 This package is still a pure skill, not a background plugin.

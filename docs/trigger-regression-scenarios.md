@@ -48,3 +48,10 @@ Expected decision: no stronger cleanup reconsideration from this checkpoint alon
 - Current-thread ownership only narrows explicit automation cleanup; it does not widen cleanup for generic runtimes.
 - Do not clean plain interactive shells, ordinary user browsers, reusable dev servers, or ambiguous runtimes without strong task-specific evidence.
 - Workspace match alone is not enough for explicit automation.
+
+## Action Protocol
+
+- inspect first after a trigger-worthy finished checkpoint
+- if `inspect` reports `killable roots`, run `checkpoint-cleanup` next
+- use `-ConfirmCurrentThreadExplicitAutomation` on the first follow-up `inspect` only when the just-finished checkpoint really used same-thread explicit automation and the workspace is non-blank
+- read the returned ledger path fields when verifying whether same-thread ownership state was recorded

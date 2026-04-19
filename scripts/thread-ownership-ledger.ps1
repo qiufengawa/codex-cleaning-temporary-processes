@@ -37,6 +37,27 @@ function Get-ThreadOwnershipStateRoot {
     return Join-Path (Join-Path $codexHomePath 'state') 'codex-cleaning-temporary-processes'
   }
 
+  $installedScriptsPath = $PSScriptRoot
+  try {
+    $resolvedScriptsPath = Resolve-Path -LiteralPath $PSScriptRoot -ErrorAction Stop | Select-Object -First 1
+    if ($null -ne $resolvedScriptsPath -and -not [string]::IsNullOrWhiteSpace($resolvedScriptsPath.ProviderPath)) {
+      $installedScriptsPath = $resolvedScriptsPath.ProviderPath
+    }
+  } catch {
+  }
+
+  $skillRoot = Split-Path -Path $installedScriptsPath -Parent
+  $skillsRoot = Split-Path -Path $skillRoot -Parent
+  if (
+    -not [string]::IsNullOrWhiteSpace($skillsRoot) -and
+    ([System.IO.Path]::GetFileName($skillsRoot)).Equals('skills', [System.StringComparison]::OrdinalIgnoreCase)
+  ) {
+    $inferredCodexHome = Split-Path -Path $skillsRoot -Parent
+    if (-not [string]::IsNullOrWhiteSpace($inferredCodexHome)) {
+      return Join-Path (Join-Path $inferredCodexHome 'state') 'codex-cleaning-temporary-processes'
+    }
+  }
+
   return Join-Path ([System.IO.Path]::GetTempPath()) 'codex-cleaning-temporary-processes'
 }
 

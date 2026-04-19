@@ -5,6 +5,23 @@ Describe 'thread ownership ledger' {
     $env:CODEX_HOME = $TestDrive
   }
 
+  It 'infers the Codex state root from an installed skill path when CODEX_HOME is unset' {
+    $env:CODEX_HOME = $null
+
+    $inferredCodexHome = Join-Path $TestDrive 'codex-home'
+    $installedSkillScripts = Join-Path $inferredCodexHome 'skills\codex-cleaning-temporary-processes\scripts'
+    $null = New-Item -ItemType Directory -Path $installedSkillScripts -Force
+    $copiedLibraryPath = Join-Path $installedSkillScripts 'thread-ownership-ledger.ps1'
+    Copy-Item -LiteralPath $libraryPath -Destination $copiedLibraryPath -Force
+
+    . $copiedLibraryPath
+
+    $stateRoot = Get-ThreadOwnershipStateRoot
+    $expectedStateRoot = Join-Path $inferredCodexHome 'state\codex-cleaning-temporary-processes'
+
+    $stateRoot | Should Be $expectedStateRoot
+  }
+
   It 'prunes stale or inactive ownership entries when loading the current thread ledger' {
     . $libraryPath
 

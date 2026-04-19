@@ -118,6 +118,20 @@ function Test-InventoryProcessIdentityMatch {
   )
 }
 
+function New-ThreadOwnershipMetadata {
+  param(
+    [string]$ThreadId,
+    [object[]]$Entries
+  )
+
+  [pscustomobject]@{
+    ThreadId                 = $ThreadId
+    ThreadOwnershipStateRoot = Get-ThreadOwnershipStateRoot
+    ThreadOwnershipLedgerPath = Get-ThreadOwnershipLedgerPath -ThreadId $ThreadId
+    ThreadOwnershipEntryCount = @($Entries).Count
+  }
+}
+
 $threadId = Get-CurrentCodexThreadId
 $snapshotTimeUtc = [datetime]::UtcNow
 $allowCurrentThreadExplicitAutomationSeed = $ConfirmCurrentThreadExplicitAutomation -and -not [string]::IsNullOrWhiteSpace($Workspace)
@@ -125,7 +139,7 @@ $snapshot = Get-ClassifiedTemporaryProcessSnapshot -Workspace $Workspace -Thread
 $classified = @($snapshot.Classified)
 
 if ($Mode -in @("cleanup", "checkpoint-cleanup")) {
-  $null = Update-ThreadOwnershipEntries -ThreadId $threadId -ExistingEntries @($snapshot.ThreadOwnership) -Processes @($snapshot.Processes) -ClassifiedRecords @($classified) -Workspace $Workspace -CurrentTimeUtc ([datetime]::UtcNow)
+  $updatedThreadOwnership = @(Update-ThreadOwnershipEntries -ThreadId $threadId -ExistingEntries @($snapshot.ThreadOwnership) -Processes @($snapshot.Processes) -ClassifiedRecords @($classified) -Workspace $Workspace -CurrentTimeUtc ([datetime]::UtcNow))
 
   $killRoots = @($classified | Where-Object { $_.Decision -eq "cleanup-now" })
   $cleanupNowIds = New-Object 'System.Collections.Generic.HashSet[int]'
@@ -181,6 +195,9 @@ if ($Mode -in @("cleanup", "checkpoint-cleanup")) {
     }
   }
 
+  $finalThreadOwnership = @(Update-ThreadOwnershipEntries -ThreadId $threadId -ExistingEntries @($postSnapshot.ThreadOwnership) -Processes @($postSnapshot.Processes) -ClassifiedRecords @($postClassified) -Workspace $Workspace -CurrentTimeUtc ([datetime]::UtcNow))
+  $threadOwnershipMetadata = New-ThreadOwnershipMetadata -ThreadId $threadId -Entries @($finalThreadOwnership)
+
   $output = [pscustomobject]@{
     mode          = $Mode
     workspace     = $Workspace
@@ -195,11 +212,16 @@ if ($Mode -in @("cleanup", "checkpoint-cleanup")) {
     killedIds     = @($killedIds)
     failedCount   = @($failedIds).Count
     failedIds     = @($failedIds)
+    threadId      = $threadOwnershipMetadata.ThreadId
+    threadOwnershipStateRoot = $threadOwnershipMetadata.ThreadOwnershipStateRoot
+    threadOwnershipLedgerPath = $threadOwnershipMetadata.ThreadOwnershipLedgerPath
+    threadOwnershipEntryCount = $threadOwnershipMetadata.ThreadOwnershipEntryCount
     processes     = @($postClassified)
   }
-
-  $null = Update-ThreadOwnershipEntries -ThreadId $threadId -ExistingEntries @($postSnapshot.ThreadOwnership) -Processes @($postSnapshot.Processes) -ClassifiedRecords @($postClassified) -Workspace $Workspace -CurrentTimeUtc ([datetime]::UtcNow)
 } else {
+  $updatedThreadOwnership = @(Update-ThreadOwnershipEntries -ThreadId $threadId -ExistingEntries @($snapshot.ThreadOwnership) -Processes @($snapshot.Processes) -ClassifiedRecords @($classified) -Workspace $Workspace -CurrentTimeUtc ([datetime]::UtcNow))
+  $threadOwnershipMetadata = New-ThreadOwnershipMetadata -ThreadId $threadId -Entries @($updatedThreadOwnership)
+
   $output = [pscustomobject]@{
     mode          = $Mode
     workspace     = $Workspace
@@ -210,10 +232,12 @@ if ($Mode -in @("cleanup", "checkpoint-cleanup")) {
       inspectOnly = @($classified | Where-Object { $_.Decision -eq "inspect-only" }).Count
       preserve = @($classified | Where-Object { $_.Decision -eq "preserve" }).Count
     }
+    threadId      = $threadOwnershipMetadata.ThreadId
+    threadOwnershipStateRoot = $threadOwnershipMetadata.ThreadOwnershipStateRoot
+    threadOwnershipLedgerPath = $threadOwnershipMetadata.ThreadOwnershipLedgerPath
+    threadOwnershipEntryCount = $threadOwnershipMetadata.ThreadOwnershipEntryCount
     processes     = @($classified)
   }
-
-  $null = Update-ThreadOwnershipEntries -ThreadId $threadId -ExistingEntries @($snapshot.ThreadOwnership) -Processes @($snapshot.Processes) -ClassifiedRecords @($classified) -Workspace $Workspace -CurrentTimeUtc ([datetime]::UtcNow)
 }
 
 if ($AsJson) {

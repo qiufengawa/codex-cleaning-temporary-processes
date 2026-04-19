@@ -28,6 +28,13 @@ Stronger triggering means stronger reconsideration, not stronger kill authority.
 
 If implicit invocation does not happen in your environment, explicitly ask Codex to use `$codex-cleaning-temporary-processes`.
 
+At trigger-worthy checkpoints, inspect first.
+
+- Run `inspect` before deciding whether to preserve or reclaim.
+- If `inspect` reports `killable roots`, run `checkpoint-cleanup` next instead of waiting for the whole task to end.
+- If this same thread just finished DevTools MCP, browser automation, or remote-debug work, use `-ConfirmCurrentThreadExplicitAutomation` on the first follow-up `inspect` together with a non-blank workspace.
+- Read the returned ledger path and state root fields when you need to verify whether same-thread ownership state was actually recorded.
+
 ## Toolchain Coverage
 
 This skill is public and language-agnostic. It should reason about temporary processes across mainstream toolchains, not just one project stack.

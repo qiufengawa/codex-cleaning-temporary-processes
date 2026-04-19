@@ -27,6 +27,7 @@ Describe 'public skill trigger contract' {
     $skillMarkdown | Should Match 'implicit'
     $skillMarkdown | Should Match 'checkpoint'
     $skillMarkdown | Should Match 'multi-project'
+    $skillMarkdown | Should Match 'inspect first'
     $skillMarkdown | Should Match 'must reconsider now'
     $skillMarkdown | Should Match 'should reconsider soon'
     $skillMarkdown | Should Match 'do not reconsider from this checkpoint alone'
@@ -43,6 +44,8 @@ Describe 'public skill trigger contract' {
     $metadataYaml | Should Match 'best-effort'
     $metadataYaml | Should Match 'implicit'
     $metadataYaml | Should Match 'multi-project'
+    $metadataYaml | Should Match 'inspect first'
+    $metadataYaml | Should Match 'killable roots'
     $metadataYaml | Should Match 'must reconsider cleanup now'
     $metadataYaml | Should Match 'failed one-shot'
     $metadataYaml | Should Match 'session-end alone'
@@ -62,6 +65,10 @@ Describe 'public skill trigger contract' {
     $readmeEnglish | Should Match 'best-effort'
     $readmeEnglish | Should Match 'implicit invocation'
     $readmeEnglish | Should Match 'CODEX_HOME/skills'
+    $readmeEnglish | Should Match 'inspect first'
+    $readmeEnglish | Should Match 'killable roots'
+    $readmeEnglish | Should Match 'ledger path'
+    $readmeEnglish | Should Match 'ConfirmCurrentThreadExplicitAutomation'
     $readmeEnglish | Should Match 'checkpoint-cleanup'
     $readmeEnglish | Should Match 'npm'
     $readmeEnglish | Should Match 'vite'
@@ -115,6 +122,8 @@ Describe 'public skill trigger contract' {
     $readmeChinese | Should Match ([regex]::Escape($implicitZh))
     $readmeChinese | Should Match ([regex]::Escape($checkpointZh))
     $readmeChinese | Should Match ([regex]::Escape($multiProjectIsolationZh))
+    $readmeChinese | Should Match 'inspect'
+    $readmeChinese | Should Match 'ConfirmCurrentThreadExplicitAutomation'
     $readmeChinese | Should Match 'trunk'
     $readmeChinese | Should Match 'hatch'
     $readmeChinese | Should Match 'jupyter'
@@ -159,6 +168,9 @@ Describe 'public skill trigger contract' {
     $triggerScenariosEnglish | Should Match 'finished checkpoint'
     $triggerScenariosEnglish | Should Match 'subagent'
     $triggerScenariosEnglish | Should Match 'backlog relief'
+    $triggerScenariosEnglish | Should Match 'inspect first'
+    $triggerScenariosEnglish | Should Match 'ConfirmCurrentThreadExplicitAutomation'
+    $triggerScenariosEnglish | Should Match 'killable roots'
     $triggerScenariosEnglish | Should Match 'must reconsider now'
     $triggerScenariosEnglish | Should Match 'should reconsider soon'
     $triggerScenariosEnglish | Should Match 'do not reconsider from this checkpoint alone'
@@ -172,6 +184,8 @@ Describe 'public skill trigger contract' {
     $triggerScenariosChinese | Should Match ([regex]::Escape($implicitZh))
     $triggerScenariosChinese | Should Match ([regex]::Escape($checkpointZh))
     $triggerScenariosChinese | Should Match ([regex]::Escape($subagentZh))
+    $triggerScenariosChinese | Should Match 'inspect'
+    $triggerScenariosChinese | Should Match 'ConfirmCurrentThreadExplicitAutomation'
     $triggerScenariosChinese | Should Match 'must reconsider now'
     $triggerScenariosChinese | Should Match 'should reconsider soon'
     $triggerScenariosChinese | Should Match 'do not reconsider from this checkpoint alone'
