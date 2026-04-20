@@ -69,6 +69,8 @@ Describe 'public skill trigger contract' {
     $readmeEnglish | Should Match 'killable roots'
     $readmeEnglish | Should Match 'ledger path'
     $readmeEnglish | Should Match 'ConfirmCurrentThreadExplicitAutomation'
+    $readmeEnglish | Should Match 'developer_instructions'
+    $readmeEnglish | Should Match 'AGENTS\.md'
     $readmeEnglish | Should Match 'checkpoint-cleanup'
     $readmeEnglish | Should Match 'npm'
     $readmeEnglish | Should Match 'vite'
@@ -124,6 +126,8 @@ Describe 'public skill trigger contract' {
     $readmeChinese | Should Match ([regex]::Escape($multiProjectIsolationZh))
     $readmeChinese | Should Match 'inspect'
     $readmeChinese | Should Match 'ConfirmCurrentThreadExplicitAutomation'
+    $readmeChinese | Should Match 'developer_instructions'
+    $readmeChinese | Should Match 'AGENTS\.md'
     $readmeChinese | Should Match 'trunk'
     $readmeChinese | Should Match 'hatch'
     $readmeChinese | Should Match 'jupyter'

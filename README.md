@@ -14,6 +14,56 @@ This repository ships as a pure skill package.
 
 That means the skill can proactively guide Codex toward cleanup at the right moments, but it does not guarantee host-level automatic triggering. If your environment does not invoke the skill implicitly, explicitly ask for `$codex-cleaning-temporary-processes`.
 
+## Recommended Global Reinforcement
+
+If you want the highest practical trigger rate while keeping this package in pure-skill form, reinforce it with global Codex instructions.
+
+Recommended layering:
+
+- put a short hard-rules block in `~/.codex/config.toml` under `developer_instructions`
+- put the longer operator guidance in `~/.codex/AGENTS.md`
+- keep this repository installed under `CODEX_HOME/skills/codex-cleaning-temporary-processes`
+
+Why this helps:
+
+- every new Codex conversation starts with temporary-process hygiene as a default operating rule
+- Codex is more likely to reconsider cleanup at finished checkpoints during long tasks, not only at the very end
+- explicit automation follow-up, multi-project isolation, and inspect-first discipline stay visible even when the user does not manually remind the model
+
+What this does not change:
+
+- it still does not create host hooks, timers, or always-on callbacks
+- it still does not guarantee perfect automatic triggering
+- it still must follow the same safety boundaries: inspect first, reclaim only with strong evidence, and never cross workspace or conversation boundaries
+
+Example `developer_instructions` pattern:
+
+```toml
+developer_instructions = """
+Use `$codex-cleaning-temporary-processes` as the default temporary-process hygiene strategy whenever coding work may leave temporary development processes, browser automation residue, helper shells, wrappers, launchers, watchdogs, test runners, build tools, or remote-debug chains.
+
+This is a pure skill, not a host-level plugin. Do not pretend the host guarantees automatic callbacks. Instead, proactively reconsider cleanup at trigger-worthy finished checkpoints during normal work.
+
+Hard rules:
+- After every trigger-worthy finished checkpoint, inspect first.
+- Only run `checkpoint-cleanup` if `inspect` explicitly reports `killable roots`.
+- Reserve full `cleanup` for cases where the remaining temporary tree is clearly finished and no longer useful.
+- Use `-ConfirmCurrentThreadExplicitAutomation` only on the first follow-up `inspect` after real same-thread DevTools MCP, browser automation, or remote-debug work, and only with a non-blank workspace.
+- Never let workspace match alone authorize explicit automation cleanup.
+- Never let same-thread ownership broaden cleanup for generic runtimes.
+- Never kill the active Codex shell, ordinary interactive shells, ordinary browsers, reusable `dev` or `watch` or `serve` servers, or ambiguous user-owned runtimes.
+- Never allow one project, workspace, worktree, conversation, or task to reclaim another project's processes.
+- If evidence is weak, ambiguous, cross-workspace, or cross-thread, remain `inspect-only`.
+- Reconsider cleanup after finished one-shot commands, finished browser automation, finished DevTools or remote-debug work, finished subagent batches, finished same-workspace batches, timeouts, interruptions, and user-requested final sweeps. Do not wait only for full task completion.
+"""
+```
+
+Suggested `AGENTS.md` role:
+
+- keep the short hard rules in `developer_instructions`
+- keep the longer explanation in `AGENTS.md`
+- document trigger classes, explicit automation follow-up, multi-project isolation, and reporting expectations there
+
 ## What It Covers
 
 The skill is intentionally broader than a single frontend stack. It should reason about temporary process residue across mainstream toolchains such as:
